@@ -64,7 +64,7 @@ async def process_merged_pr_webhook(
         # 1. Ensure repository is registered
         repo_parts = repo_full_name.split("/")
         owner, name = repo_parts[0], repo_parts[1]
-        repo = await db_repo.get_repository_by_full_name(session, repo_full_name)
+        repo = await db_repo.get_repository_by_name(session, repo_full_name)
         if not repo:
             repo = await db_repo.upsert_repository(
                 session,
@@ -76,16 +76,34 @@ async def process_merged_pr_webhook(
             await session.commit()
 
         # 2. Fetch full sub-resources from GitHub API (commits, files, reviews, comments)
-        async with GitHubCollector(settings.github_token) as collector:
-            detailed_pr = await collector.get_pull_request(owner, name, pr_number) or pr_data
-            commits = await collector.get_pr_commits(owner, name, pr_number)
-            changed_files = await collector.get_pr_files(owner, name, pr_number)
-            reviews = await collector.get_pr_reviews(owner, name, pr_number)
-            review_comments = await collector.get_pr_review_comments(owner, name, pr_number)
-            discussion_comments = await collector.get_pr_comments(owner, name, pr_number)
-            linked_issues = await collector.get_linked_issues(
-                owner, name, detailed_pr.get("body") or ""
-            )
+        detailed_pr = pr_data
+        commits: list[dict[str, Any]] = []
+        changed_files: list[dict[str, Any]] = []
+        reviews: list[dict[str, Any]] = []
+        review_comments: list[dict[str, Any]] = []
+        discussion_comments: list[dict[str, Any]] = []
+        linked_issues: list[dict[str, Any]] = []
+
+        try:
+            async def _fetch_remote() -> None:
+                nonlocal detailed_pr, commits, changed_files, reviews, review_comments, discussion_comments, linked_issues
+                async with GitHubCollector(settings.github_token) as collector:
+                    remote_pr = await collector.get_pull_request(owner, name, pr_number)
+                    if remote_pr:
+                        detailed_pr = remote_pr
+                    commits = await collector.get_pr_commits(owner, name, pr_number)
+                    changed_files = await collector.get_pr_files(owner, name, pr_number)
+                    reviews = await collector.get_pr_reviews(owner, name, pr_number)
+                    review_comments = await collector.get_pr_review_comments(owner, name, pr_number)
+                    discussion_comments = await collector.get_pr_comments(owner, name, pr_number)
+                    linked_issues = await collector.get_linked_issues(
+                        owner, name, detailed_pr.get("body") or ""
+                    )
+
+            import asyncio
+            await asyncio.wait_for(_fetch_remote(), timeout=10.0)
+        except Exception as e:
+            logger.warning("Could not fetch remote sub-resources from GitHub: %s. Using webhook payload directly.", e)
 
         # 3. Store in Database
         db_pr = await db_repo.upsert_pull_request(session, repository_id=repo.id, pr_data=detailed_pr)
@@ -120,7 +138,7 @@ async def process_merged_pr_webhook(
         logger.info("📐 [WEBHOOK] Vector embeddings generated and indexed with pgvector for PR #%s", pr_number)
 
         # 7. Update repository PR count
-        count = await db_repo.get_pr_count(session, repo.id)
+        count = await db_repo.count_prs_by_repo(session, repo.id)
         await db_repo.update_sync_status(session, repo.id, SyncStatus.COMPLETED, total_prs=count)
         await session.commit()
         logger.info("✅ [WEBHOOK] Pipeline complete for PR #%s! Ready for search and Q&A.", pr_number)

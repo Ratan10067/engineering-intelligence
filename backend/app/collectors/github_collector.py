@@ -229,6 +229,12 @@ class GitHubCollector:
         )
         return detailed_prs
 
+    async def get_pull_request(
+        self, owner: str, repo: str, pr_number: int
+    ) -> dict[str, Any] | None:
+        """Fetch details for a single PR."""
+        return await self._get_json(f"/repos/{owner}/{repo}/pulls/{pr_number}")
+
     # ── PR Sub-resources ────────────────────────────────────────────────
 
     async def get_pr_commits(

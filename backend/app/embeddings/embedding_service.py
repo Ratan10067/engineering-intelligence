@@ -132,7 +132,7 @@ class EmbeddingService:
         for idx, (doc, embedding) in enumerate(zip(docs, embeddings)):
             await session.execute(
                 text(
-                    "UPDATE engineering_documents SET embedding = :embedding WHERE id = :doc_id"
+                    "UPDATE engineering_documents SET embedding = CAST(:embedding AS vector) WHERE id = :doc_id"
                 ),
                 {"embedding": str(embedding), "doc_id": doc.id},
             )
