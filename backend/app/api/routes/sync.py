@@ -263,3 +263,21 @@ async def get_sync_status(
         "total_prs_synced": repo.total_prs_synced,
         "last_synced_at": repo.last_synced_at.isoformat() if repo.last_synced_at else None,
     }
+
+
+@router.post("/{repo_id}/cancel")
+async def cancel_sync(
+    repo_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Cancel or reset sync status for a repository."""
+    repo = await db_repo.get_repository(session, repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    await db_repo.update_sync_status(session, repo.id, SyncStatus.COMPLETED)
+    await session.commit()
+    return {
+        "status": "cancelled",
+        "message": f"Sync status reset for {repo.full_name}",
+    }
