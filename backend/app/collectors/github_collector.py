@@ -52,21 +52,23 @@ class GitHubCollector:
     BASE_URL = "https://api.github.com"
 
     def __init__(self, token: str | None = None):
-        self.token = token or settings.github_token
-        if not self.token:
-            raise ValueError(
-                "GitHub token not configured. Set GITHUB_TOKEN in .env"
-            )
+        self.token = token if token is not None else settings.github_token
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> GitHubCollector:
+        headers: dict[str, str] = {
+            "Accept": "application/vnd.github.v3+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "Engineering-Intelligence-Platform",
+        }
+        if self.token and not self.token.startswith("ghp_your_token") and self.token.strip():
+            headers["Authorization"] = f"Bearer {self.token.strip()}"
+        else:
+            logger.info("Using unauthenticated GitHub API requests (public repositories). Set GITHUB_TOKEN for higher rate limits.")
+
         self._client = httpx.AsyncClient(
             base_url=self.BASE_URL,
-            headers={
-                "Authorization": f"Bearer {self.token}",
-                "Accept": "application/vnd.github.v3+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
+            headers=headers,
             timeout=httpx.Timeout(30.0, connect=10.0),
         )
         return self
