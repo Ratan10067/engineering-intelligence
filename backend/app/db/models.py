@@ -14,6 +14,7 @@ from typing import Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -102,7 +103,7 @@ class Repository(TimestampMixin, Base):
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
-    github_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    github_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(
@@ -143,7 +144,7 @@ class PullRequest(TimestampMixin, Base):
     repository_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
     )
-    github_pr_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    github_pr_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     github_pr_number: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -281,7 +282,7 @@ class Review(TimestampMixin, Base):
     pull_request_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("pull_requests.id", ondelete="CASCADE"), nullable=False
     )
-    github_review_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    github_review_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     author: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     state: Mapped[str] = mapped_column(String(50), nullable=False)  # APPROVED, CHANGES_REQUESTED, COMMENTED
     body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -315,7 +316,7 @@ class ReviewComment(TimestampMixin, Base):
     pull_request_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("pull_requests.id", ondelete="CASCADE"), nullable=False
     )
-    github_comment_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    github_comment_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     author: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -350,7 +351,7 @@ class DiscussionComment(TimestampMixin, Base):
     pull_request_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("pull_requests.id", ondelete="CASCADE"), nullable=False
     )
-    github_comment_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    github_comment_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     author: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     comment_created_at: Mapped[Optional[datetime]] = mapped_column(
