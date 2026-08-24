@@ -257,17 +257,17 @@ class DocumentService:
 
         Returns the total number of documents created.
         """
-        # Get PRs with knowledge
+        # Get all PRs in repo
         result = await session.execute(
             select(PullRequest)
-            .join(PRKnowledge)
+            .outerjoin(PRKnowledge)
             .where(PullRequest.repository_id == repo_id)
             .order_by(PullRequest.github_pr_number)
         )
         prs = list(result.scalars().all())
 
         if not prs:
-            logger.info("No PRs with knowledge found for repo %d", repo_id)
+            logger.info("No PRs found for repo %d", repo_id)
             return 0
 
         total_docs = 0

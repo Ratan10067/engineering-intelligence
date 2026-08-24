@@ -108,8 +108,14 @@ class VectorSearch:
         params["min_score"] = min_score
         params["top_k"] = top_k
 
-        # pgvector doesn't support HAVING on calculated columns in all cases,
-        # so we use a subquery approach
+        params: dict[str, Any] = {
+            "query_embedding": str(query_embedding),
+            "min_score": float(min_score),
+            "top_k": int(top_k),
+        }
+        if repo_id:
+            params["repo_id"] = repo_id
+
         sql = f"""
             SELECT * FROM (
                 SELECT
@@ -125,7 +131,7 @@ class VectorSearch:
                     ed.components,
                     ed.change_types,
                     pr.html_url,
-                    1 - (ed.embedding <=> :query_embedding::vector) as similarity_score
+                    1 - (ed.embedding <=> CAST(:query_embedding AS vector)) as similarity_score
                 FROM engineering_documents ed
                 JOIN pull_requests pr ON ed.pull_request_id = pr.id
                 WHERE ed.embedding IS NOT NULL

@@ -129,6 +129,22 @@ async def update_sync_status(
 # =============================================================================
 
 
+def _parse_dt(dt_val: Any) -> datetime | None:
+    """Parse string or datetime into datetime object for asyncpg."""
+    if not dt_val:
+        return None
+    if isinstance(dt_val, datetime):
+        return dt_val
+    if isinstance(dt_val, str):
+        try:
+            # Handle ISO 8601 with Z
+            clean = dt_val.replace("Z", "+00:00")
+            return datetime.fromisoformat(clean)
+        except Exception:
+            return None
+    return None
+
+
 async def upsert_pull_request(
     session: AsyncSession,
     *,
@@ -157,9 +173,9 @@ async def upsert_pull_request(
         "additions": pr_data.get("additions", 0),
         "deletions": pr_data.get("deletions", 0),
         "changed_files_count": pr_data.get("changed_files", 0),
-        "github_created_at": pr_data.get("created_at"),
-        "github_merged_at": pr_data.get("merged_at"),
-        "github_closed_at": pr_data.get("closed_at"),
+        "github_created_at": _parse_dt(pr_data.get("created_at")),
+        "github_merged_at": _parse_dt(pr_data.get("merged_at")),
+        "github_closed_at": _parse_dt(pr_data.get("closed_at")),
         "html_url": pr_data.get("html_url"),
         "raw_data": pr_data,
     }
@@ -264,7 +280,7 @@ async def upsert_commits(
                 message=commit_info.get("message"),
                 author_name=author_info.get("name"),
                 author_email=author_info.get("email"),
-                committed_at=author_info.get("date"),
+                committed_at=_parse_dt(author_info.get("date")),
             )
             .on_conflict_do_update(
                 constraint="uq_pr_commit_sha",
@@ -331,7 +347,7 @@ async def upsert_reviews(
                 author=review_data.get("user", {}).get("login"),
                 state=review_data.get("state", "COMMENTED"),
                 body=review_data.get("body"),
-                submitted_at=review_data.get("submitted_at"),
+                submitted_at=_parse_dt(review_data.get("submitted_at")),
             )
             .on_conflict_do_update(
                 constraint="uq_pr_review",
@@ -366,7 +382,7 @@ async def upsert_review_comments(
                 body=comment.get("body"),
                 path=comment.get("path"),
                 diff_hunk=comment.get("diff_hunk"),
-                comment_created_at=comment.get("created_at"),
+                comment_created_at=_parse_dt(comment.get("created_at")),
             )
             .on_conflict_do_update(
                 constraint="uq_pr_review_comment",
@@ -396,7 +412,7 @@ async def upsert_discussion_comments(
                 github_comment_id=comment["id"],
                 author=comment.get("user", {}).get("login"),
                 body=comment.get("body"),
-                comment_created_at=comment.get("created_at"),
+                comment_created_at=_parse_dt(comment.get("created_at")),
             )
             .on_conflict_do_update(
                 constraint="uq_pr_discussion_comment",
