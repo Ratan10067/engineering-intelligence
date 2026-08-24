@@ -65,6 +65,16 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleCancelSync(repoId: number) {
+    try {
+      const res = await api.cancelSync(repoId);
+      alert(res.message);
+      loadDashboardData();
+    } catch (e: any) {
+      alert(`Cancel error: ${e.message}`);
+    }
+  }
+
   return (
     <div>
       <Header
@@ -173,13 +183,25 @@ export default function DashboardPage() {
                         {r.last_synced_at ? new Date(r.last_synced_at).toLocaleString() : "Never"}
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => handleSync(r.id)}
-                          disabled={isSyncing}
-                        >
-                          {isSyncing ? "Syncing..." : "Sync Now"}
-                        </button>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleSync(r.id)}
+                            disabled={isSyncing}
+                          >
+                            {isSyncing ? "Syncing..." : "Sync Now"}
+                          </button>
+                          {isSyncing && (
+                            <button
+                              className="btn btn-sm"
+                              style={{ background: "#ef4444", color: "#fff", border: "none" }}
+                              onClick={() => handleCancelSync(r.id)}
+                              title="Cancel active sync"
+                            >
+                              Stop
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
