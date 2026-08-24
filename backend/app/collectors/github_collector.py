@@ -117,10 +117,15 @@ class GitHubCollector:
     async def _request(
         self, method: str, url: str, **kwargs: Any
     ) -> httpx.Response:
+        """Make an HTTP request with retry and rate limit handling."""
+        response = await self.client.request(method, url, **kwargs)
+
         if response.status_code == 401 and "Authorization" in self.client.headers:
             logger.warning("GitHub token returned 401 (Bad credentials). Falling back to unauthenticated public API.")
             del self.client.headers["Authorization"]
             response = await self.client.request(method, url, **kwargs)
+
+        await self._check_rate_limit(response)
 
         if response.status_code == 404:
             return response  # Handle 404 at call site
