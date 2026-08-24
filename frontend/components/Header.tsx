@@ -12,41 +12,55 @@ interface HeaderProps {
 
 export function Header({ title = "Engineering Memory", selectedRepoId, onSelectRepo }: HeaderProps) {
   const [repos, setRepos] = useState<Repository[]>([]);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
     api.getRepositories().then(setRepos).catch(console.error);
+
+    // Initialize theme from document or localStorage
+    const savedTheme = (localStorage.getItem("theme") as "dark" | "light") || "dark";
+    setTheme(savedTheme);
+    document.documentElement.setAttribute("data-theme", savedTheme);
   }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    localStorage.setItem("theme", nextTheme);
+    document.documentElement.setAttribute("data-theme", nextTheme);
+  };
 
   return (
     <header className="header">
-      <div className="header-title-group">
-        <div className="header-title">{title}</div>
-      </div>
+      <div className="header-title">{title}</div>
 
       <div className="header-actions">
         {repos.length > 0 && onSelectRepo && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-tertiary)", fontWeight: 600 }}>
-              REPOSITORY:
-            </span>
-            <select
-              className="filter-select"
-              style={{ padding: "6px 28px 6px 12px", fontSize: "0.82rem" }}
-              value={selectedRepoId || ""}
-              onChange={(e) => onSelectRepo(e.target.value ? Number(e.target.value) : undefined)}
-            >
-              <option value="">All Repositories ({repos.length})</option>
-              {repos.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.full_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            className="filter-select"
+            value={selectedRepoId || ""}
+            onChange={(e) => onSelectRepo(e.target.value ? Number(e.target.value) : undefined)}
+          >
+            <option value="">All Repositories ({repos.length})</option>
+            {repos.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.full_name}
+              </option>
+            ))}
+          </select>
         )}
 
+        {/* Dark / White Theme Toggle */}
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={toggleTheme}
+          title="Toggle Dark / Light Theme"
+        >
+          {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+        </button>
+
         <Link href="/questions" className="btn btn-primary btn-sm">
-          ✨ Ask AI
+          Ask Question
         </Link>
       </div>
     </header>
