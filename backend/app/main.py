@@ -14,7 +14,14 @@ from typing import Any, AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import pull_requests, questions, repositories, search, sync
+from app.api.routes import (
+    pull_requests,
+    questions,
+    repositories,
+    search,
+    sync,
+    webhooks,
+)
 from app.config import get_settings
 
 settings = get_settings()
@@ -22,10 +29,10 @@ settings = get_settings()
 # ── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    format="%(asctime)s │ %(levelname)-7s │ %(name)-28s │ %(message)s",
+    datefmt="%H:%M:%S",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("engineering_intelligence.main")
 
 
 # ── Lifespan ────────────────────────────────────────────────────────────────
@@ -86,6 +93,7 @@ app.include_router(sync.router)
 app.include_router(pull_requests.router)
 app.include_router(search.router)
 app.include_router(questions.router)
+app.include_router(webhooks.router, prefix="/api")
 
 
 # ── Health Check ────────────────────────────────────────────────────────────

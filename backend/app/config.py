@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # ── GitHub ──────────────────────────────────────────────────────────
     github_token: str = ""
     github_default_repo: str = ""
+    github_webhook_secret: str = ""
 
     # ── Ollama (Local LLM) ─────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
