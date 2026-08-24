@@ -78,9 +78,23 @@ function QuestionsContent() {
 
       {/* Question Input Card */}
       <div className="card">
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          <select
+            className="filter-select"
+            value={selectedRepo || ""}
+            onChange={(e) => setSelectedRepo(e.target.value ? Number(e.target.value) : undefined)}
+            style={{ minWidth: 200 }}
+          >
+            <option value="">🏢 All Repositories</option>
+            {repos.map((r) => (
+              <option key={r.id} value={r.id}>
+                📁 {r.full_name}
+              </option>
+            ))}
+          </select>
           <input
             className="input"
+            style={{ flex: 1, minWidth: 280 }}
             placeholder="Ask a question about engineering history (e.g., Why was the caching logic changed?)..."
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
