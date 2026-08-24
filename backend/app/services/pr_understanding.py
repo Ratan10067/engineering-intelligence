@@ -8,6 +8,7 @@ Distinguishes between DOCUMENTED, INFERRED, and UNKNOWN evidence.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any
@@ -255,9 +256,10 @@ Produce a JSON response with this exact structure:
         )
 
         logger.info(
-            "Generated knowledge for PR #%d in %dms",
+            "🧠 [LLM PR UNDERSTANDING JSON] (PR #%d generated in %dms):\n%s",
             pr.github_pr_number,
             elapsed_ms,
+            json.dumps(knowledge_data, indent=2),
         )
         return knowledge_data
 
