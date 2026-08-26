@@ -57,7 +57,7 @@ export default function DashboardPage() {
   }
 
   function handleSync(repo: Repository) {
-    if (sync.activeRepo?.id === repo.id) {
+    if (sync.activeRepo?.id === repo.id && sync.isSyncing) {
       sync.openModal(repo);
     } else {
       sync.startSync(
