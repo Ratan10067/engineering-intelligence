@@ -199,39 +199,58 @@ class GitHubCollector:
             repo: Repository name
             max_prs: Maximum number of PRs to fetch
             since: Only fetch PRs updated after this time
+            exclude_pr_numbers: Set of PR numbers to skip (already indexed in database)
         """
-        params: dict[str, Any] = {
-            "state": "closed",
-            "sort": "updated",
-            "direction": "desc",
-        }
-        if since:
-            params["since"] = since.isoformat()
+        exclude_set = exclude_pr_numbers or set()
+        detailed_prs: list[dict[str, Any]] = []
+        page = 1
+        max_pages = 20  # Fetch up to 20 pages (1000 PRs max) if looking for unindexed PRs
 
-        all_prs = await self._get_paginated(
-            f"/repos/{owner}/{repo}/pulls",
-            max_items=max_prs * 2,  # Fetch extra to account for non-merged
-            params=params,
-        )
+        while len(detailed_prs) < max_prs and page <= max_pages:
+            params: dict[str, Any] = {
+                "state": "closed",
+                "sort": "created",
+                "direction": "desc",
+                "per_page": 50,
+                "page": page,
+            }
+            if since and not exclude_set:
+                params["since"] = since.isoformat()
 
-        # Filter to only merged PRs
-        merged_prs = [pr for pr in all_prs if pr.get("merged_at") is not None]
-
-        # Get detailed info for each (includes additions/deletions/changed_files)
-        detailed_prs = []
-        for pr in merged_prs[:max_prs]:
-            detail = await self._get_json(
-                f"/repos/{owner}/{repo}/pulls/{pr['number']}"
+            page_prs = await self._get_json(
+                f"/repos/{owner}/{repo}/pulls",
+                params=params,
             )
-            if detail:
-                detailed_prs.append(detail)
 
-            # Small delay to be kind to rate limits
-            if len(detailed_prs) % 10 == 0:
-                await asyncio.sleep(0.5)
+            if not page_prs or not isinstance(page_prs, list) or len(page_prs) == 0:
+                break
+
+            for pr in page_prs:
+                if len(detailed_prs) >= max_prs:
+                    break
+
+                # Filter: only merged PRs
+                if pr.get("merged_at") is None:
+                    continue
+
+                # Skip if already in database
+                if pr["number"] in exclude_set:
+                    continue
+
+                detail = await self._get_json(
+                    f"/repos/{owner}/{repo}/pulls/{pr['number']}"
+                )
+                if detail:
+                    detailed_prs.append(detail)
+
+                # Small delay to be kind to rate limits
+                if len(detailed_prs) % 10 == 0:
+                    await asyncio.sleep(0.5)
+
+            page += 1
 
         logger.info(
-            "Fetched %d merged PRs for %s/%s", len(detailed_prs), owner, repo
+            "Fetched %d new merged PRs for %s/%s", len(detailed_prs), owner, repo
         )
         return detailed_prs
 
@@ -373,6 +392,7 @@ class GitHubCollector:
         *,
         max_prs: int = 50,
         since: datetime | None = None,
+        exclude_pr_numbers: set[int] | None = None,
         progress_callback: Any = None,
     ) -> list[dict[str, Any]]:
         """
@@ -383,11 +403,12 @@ class GitHubCollector:
             repo: Repository name
             max_prs: Maximum number of PRs to collect
             since: Only collect PRs updated after this time
+            exclude_pr_numbers: Set of PR numbers to skip (already indexed in database)
             progress_callback: Optional async callback(current, total, pr_number)
         """
         # Fetch merged PRs
         prs = await self.get_merged_pull_requests(
-            owner, repo, max_prs=max_prs, since=since
+            owner, repo, max_prs=max_prs, since=since, exclude_pr_numbers=exclude_pr_numbers
         )
 
         logger.info("Collecting full data for %d PRs", len(prs))

@@ -80,11 +80,9 @@ async def _run_full_sync(
                         default_branch=repo_info.get("default_branch", "main"),
                     )
 
-                repo = await db_repo.get_repository(session, repo_id)
-                since = repo.last_synced_at if repo else None
-
+                existing_pr_numbers = await db_repo.get_existing_pr_numbers(session, repo_id)
                 pr_data_list = await collector.collect_repository_prs(
-                    owner, name, max_prs=max_prs, since=since
+                    owner, name, max_prs=max_prs, since=since, exclude_pr_numbers=existing_pr_numbers
                 )
 
             # Store collected data
@@ -177,8 +175,9 @@ async def _run_full_sync(
             logger.info("Phase 4 complete: %d embeddings generated", embeddings_generated)
 
             # ── Complete ────────────────────────────────────────────────
+            total_in_db = await db_repo.count_prs_by_repo(session, repo_id)
             await db_repo.update_sync_status(
-                session, repo_id, SyncStatus.COMPLETED, total_prs=prs_collected
+                session, repo_id, SyncStatus.COMPLETED, total_prs=total_in_db
             )
             await db_repo.update_sync_log(
                 session,

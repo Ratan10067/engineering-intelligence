@@ -243,6 +243,18 @@ async def get_prs_without_knowledge(
     return list(result.scalars().all())
 
 
+async def get_existing_pr_numbers(
+    session: AsyncSession, repo_id: int
+) -> set[int]:
+    """Get all GitHub PR numbers already stored in database for a repository."""
+    result = await session.execute(
+        select(PullRequest.github_pr_number).where(
+            PullRequest.repository_id == repo_id
+        )
+    )
+    return set(result.scalars().all())
+
+
 async def count_prs_by_repo(session: AsyncSession, repo_id: int) -> int:
     """Count pull requests for a repository."""
     from sqlalchemy import func

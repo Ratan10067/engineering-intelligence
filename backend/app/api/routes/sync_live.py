@@ -70,6 +70,9 @@ async def _run_live_sync(
                 "message": f"Fetching PRs from GitHub for {owner}/{name}...",
             })
 
+            # Get already indexed PR numbers so subsequent syncs fetch the next new/unindexed PRs
+            existing_pr_numbers = await db_repo.get_existing_pr_numbers(session, repo_id)
+
             async with GitHubCollector() as collector:
                 repo_info = await collector.get_repository(owner, name)
                 if repo_info:
@@ -86,12 +89,16 @@ async def _run_live_sync(
                 since = repo.last_synced_at if repo else None
 
                 pr_data_list = await collector.collect_repository_prs(
-                    owner, name, max_prs=max_prs, since=since
+                    owner,
+                    name,
+                    max_prs=max_prs,
+                    since=since,
+                    exclude_pr_numbers=existing_pr_numbers,
                 )
 
             yield _sse_event("fetch_summary", {
                 "total_fetched": len(pr_data_list),
-                "message": f"Fetched {len(pr_data_list)} PRs from GitHub",
+                "message": f"Fetched {len(pr_data_list)} new PRs from GitHub (skipped {len(existing_pr_numbers)} already indexed)",
             })
 
             # Store collected data and emit per-PR events
@@ -269,9 +276,10 @@ async def _run_live_sync(
 
             # ── Complete ─────────────────────────────────────────────────
             elapsed = round(time.monotonic() - start_time, 1)
+            total_in_db = await db_repo.count_prs_by_repo(session, repo_id)
 
             await db_repo.update_sync_status(
-                session, repo_id, SyncStatus.COMPLETED, total_prs=prs_collected
+                session, repo_id, SyncStatus.COMPLETED, total_prs=total_in_db
             )
             await db_repo.update_sync_log(
                 session,
@@ -282,12 +290,13 @@ async def _run_live_sync(
             await session.commit()
 
             yield _sse_event("completed", {
-                "total_prs": prs_collected,
+                "total_prs": total_in_db,
+                "prs_new": prs_collected,
                 "total_understood": prs_understood,
                 "total_docs": docs_created,
                 "total_embeddings": embeddings_generated,
                 "elapsed_seconds": elapsed,
-                "message": f"Sync complete! {prs_collected} PRs indexed in {elapsed}s",
+                "message": f"Sync complete! {prs_collected} new PRs indexed ({total_in_db} total) in {elapsed}s",
             })
 
         except Exception as e:

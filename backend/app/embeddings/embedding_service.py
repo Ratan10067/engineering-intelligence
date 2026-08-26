@@ -51,8 +51,16 @@ class EmbeddingService:
         if self._model is None:
             logger.info("Loading embedding model: %s", self.model_name)
             from sentence_transformers import SentenceTransformer
-            model_path = r"C:\Users\ratan.k1\Desktop\Rag\all-MiniLM-L6-v2"
-            self._model = SentenceTransformer(model_path)
+            
+            # Check if model_name is a valid local directory
+            if os.path.exists(self.model_name):
+                self._model = SentenceTransformer(self.model_name)
+            else:
+                name = self.model_name
+                # Strip accidental local paths from other OS environments
+                if "\\" in name or (name.startswith("/") and not os.path.exists(name)):
+                    name = "sentence-transformers/all-MiniLM-L6-v2"
+                self._model = SentenceTransformer(name)
             logger.info("Embedding model loaded successfully")
         return self._model
 
