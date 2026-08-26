@@ -15,6 +15,9 @@ export default function DashboardPage() {
   const [newRepo, setNewRepo] = useState("");
   const [loading, setLoading] = useState(true);
   const [syncMax, setSyncMax] = useState(10);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [showDateFilter, setShowDateFilter] = useState(false);
   const [activePRId, setActivePRId] = useState<number | null>(null);
   const sync = useSync();
 
@@ -57,7 +60,12 @@ export default function DashboardPage() {
     if (sync.activeRepo?.id === repo.id) {
       sync.openModal(repo);
     } else {
-      sync.startSync(repo, syncMax);
+      sync.startSync(
+        repo,
+        syncMax,
+        fromDate.trim() ? fromDate.trim() : undefined,
+        toDate.trim() ? toDate.trim() : undefined
+      );
     }
   }
 
@@ -106,33 +114,152 @@ export default function DashboardPage() {
             <div className="card-title">Tracked Repositories</div>
             <div className="card-subtitle">GitHub repositories connected to the intelligence platform</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>Sync limit:</span>
-            <input
-              type="number"
-              className="input"
-              style={{ width: 72, textAlign: "center", padding: "4px 8px", fontSize: "0.82rem" }}
-              min={1}
-              max={500}
-              value={syncMax}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val > 0) setSyncMax(val);
-              }}
-            />
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>PRs</span>
-            {[10, 20, 50, 100].map((n) => (
-              <button
-                key={n}
-                className={`btn btn-sm ${syncMax === n ? "btn-primary" : "btn-secondary"}`}
-                style={{ padding: "2px 8px", fontSize: "0.72rem", minWidth: 0 }}
-                onClick={() => setSyncMax(n)}
-              >
-                {n}
-              </button>
-            ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>Sync limit:</span>
+              <input
+                type="number"
+                className="input"
+                style={{ width: 64, textAlign: "center", padding: "4px 8px", fontSize: "0.82rem" }}
+                min={1}
+                max={500}
+                value={syncMax}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val > 0) setSyncMax(val);
+                }}
+              />
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>PRs</span>
+              {[10, 20, 50, 100].map((n) => (
+                <button
+                  key={n}
+                  className={`btn btn-sm ${syncMax === n ? "btn-primary" : "btn-secondary"}`}
+                  style={{ padding: "2px 6px", fontSize: "0.72rem", minWidth: 0 }}
+                  onClick={() => setSyncMax(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+
+            <button
+              className={`btn btn-sm ${showDateFilter || fromDate || toDate ? "btn-primary" : "btn-secondary"}`}
+              style={{ fontSize: "0.75rem", padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}
+              onClick={() => setShowDateFilter(!showDateFilter)}
+            >
+              <span>📅</span>
+              {fromDate || toDate
+                ? `${fromDate || "Start"} → ${toDate || "Latest"}`
+                : "Date Range (Optional)"}
+            </button>
           </div>
         </div>
+
+        {/* Expandable Date Range Picker */}
+        {showDateFilter && (
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "var(--surface-elevated)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-md)",
+              marginBottom: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)", fontWeight: 500 }}>From:</span>
+                <input
+                  type="date"
+                  className="input"
+                  style={{ fontSize: "0.78rem", padding: "3px 6px", width: 140 }}
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)", fontWeight: 500 }}>To:</span>
+                <input
+                  type="date"
+                  className="input"
+                  style={{ fontSize: "0.78rem", padding: "3px 6px", width: 140 }}
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-tertiary)" }}>Presets:</span>
+                <button
+                  className="tag"
+                  style={{ cursor: "pointer", fontSize: "0.72rem" }}
+                  onClick={() => {
+                    setFromDate("2026-01-01");
+                    setToDate("2026-07-31");
+                  }}
+                >
+                  Jan &apos;26 – Jul &apos;26
+                </button>
+                <button
+                  className="tag"
+                  style={{ cursor: "pointer", fontSize: "0.72rem" }}
+                  onClick={() => {
+                    setFromDate("2026-01-01");
+                    setToDate("2026-03-31");
+                  }}
+                >
+                  Q1 2026
+                </button>
+                <button
+                  className="tag"
+                  style={{ cursor: "pointer", fontSize: "0.72rem" }}
+                  onClick={() => {
+                    setFromDate("2026-04-01");
+                    setToDate("2026-06-30");
+                  }}
+                >
+                  Q2 2026
+                </button>
+                <button
+                  className="tag"
+                  style={{ cursor: "pointer", fontSize: "0.72rem" }}
+                  onClick={() => {
+                    setFromDate("2026-01-01");
+                    setToDate("");
+                  }}
+                >
+                  2026 YTD
+                </button>
+                {(fromDate || toDate) && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: "1px 6px", fontSize: "0.7rem", color: "#ef4444" }}
+                    onClick={() => {
+                      setFromDate("");
+                      setToDate("");
+                    }}
+                  >
+                    ✕ Clear (Latest)
+                  </button>
+                )}
+              </div>
+            </div>
+            <div style={{ fontSize: "0.72rem", color: "var(--text-tertiary)" }}>
+              {fromDate || toDate ? (
+                <span>
+                  Only PRs merged/created between <strong>{fromDate || "the beginning"}</strong> and{" "}
+                  <strong>{toDate || "now"}</strong> will be fetched during sync.
+                </span>
+              ) : (
+                <span>Leave blank to fetch the latest PRs newest first.</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Add repository inline */}
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>

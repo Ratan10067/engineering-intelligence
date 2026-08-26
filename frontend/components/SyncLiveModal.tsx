@@ -7,6 +7,8 @@ export function SyncLiveModal() {
   const {
     activeRepo,
     maxPrs,
+    fromDate,
+    toDate,
     isOpen,
     isMinimized,
     isSyncing,
@@ -281,7 +283,9 @@ export function SyncLiveModal() {
         <div className="sync-modal-header">
           <div className="sync-modal-title">
             <span className="sync-modal-repo">{repoName}</span>
-            <span className="sync-modal-subtitle">Live Sync Pipeline</span>
+            <span className="sync-modal-subtitle">
+              Live Sync Pipeline {fromDate || toDate ? `· ${fromDate || 'Start'} to ${toDate || 'Latest'}` : ''}
+            </span>
           </div>
           <div className="sync-modal-actions">
             {!isComplete && !hasError && phase !== "cancelled" && (

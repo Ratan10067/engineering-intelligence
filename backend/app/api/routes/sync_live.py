@@ -47,16 +47,31 @@ async def _run_live_sync(
     owner: str,
     name: str,
     max_prs: int,
+    from_date_str: str | None = None,
+    to_date_str: str | None = None,
 ) -> AsyncGenerator[str, None]:
-    """
-    Generator that runs the full sync pipeline and yields SSE events.
-
-    Pipeline: Collect → Understand → Document → Embed
-    Each step emits events so the frontend can render live progress.
-    """
+    """Execute sync pipeline and yield SSE event strings."""
     start_time = time.monotonic()
 
+    # Parse date range filters if provided
+    from_dt: datetime | None = None
+    to_dt: datetime | None = None
+    if from_date_str:
+        try:
+            from_dt = datetime.fromisoformat(from_date_str)
+        except Exception:
+            pass
+    if to_date_str:
+        try:
+            to_dt = datetime.fromisoformat(to_date_str)
+            # Set to end of day if only date is specified (e.g. 2026-07-31 -> 2026-07-31 23:59:59)
+            if to_dt.hour == 0 and to_dt.minute == 0 and to_dt.second == 0:
+                to_dt = to_dt.replace(hour=23, minute=59, second=59)
+        except Exception:
+            pass
+
     async with async_session_factory() as session:
+        # Create sync log and mark repo as collecting
         sync_log = await db_repo.create_sync_log(
             session, repo_id, SyncStatus.COLLECTING
         )
@@ -65,9 +80,17 @@ async def _run_live_sync(
 
         try:
             # ── Phase 1: Collect GitHub Data ────────────────────────────
+            date_filter_msg = ""
+            if from_date_str and to_date_str:
+                date_filter_msg = f" between {from_date_str} and {to_date_str}"
+            elif from_date_str:
+                date_filter_msg = f" since {from_date_str}"
+            elif to_date_str:
+                date_filter_msg = f" until {to_date_str}"
+
             yield _sse_event("phase", {
                 "phase": "collecting",
-                "message": f"Fetching PRs from GitHub for {owner}/{name}...",
+                "message": f"Fetching PRs from GitHub for {owner}/{name}{date_filter_msg}...",
             })
 
             # Get already indexed PR numbers so subsequent syncs fetch the next new/unindexed PRs
@@ -86,19 +109,21 @@ async def _run_live_sync(
                     )
 
                 repo = await db_repo.get_repository(session, repo_id)
-                since = repo.last_synced_at if repo else None
+                since = repo.last_synced_at if (repo and not from_dt) else None
 
                 pr_data_list = await collector.collect_repository_prs(
                     owner,
                     name,
                     max_prs=max_prs,
                     since=since,
+                    from_date=from_dt,
+                    to_date=to_dt,
                     exclude_pr_numbers=existing_pr_numbers,
                 )
 
             yield _sse_event("fetch_summary", {
                 "total_fetched": len(pr_data_list),
-                "message": f"Fetched {len(pr_data_list)} new PRs from GitHub (skipped {len(existing_pr_numbers)} already indexed)",
+                "message": f"Fetched {len(pr_data_list)} new PRs from GitHub{date_filter_msg} (skipped {len(existing_pr_numbers)} already indexed)",
             })
 
             # Store collected data and emit per-PR events
@@ -322,12 +347,11 @@ async def _run_live_sync(
 async def sync_repository_live(
     repo_id: int,
     max_prs: int = Query(default=10, ge=1, le=500),
+    from_date: str | None = Query(default=None),
+    to_date: str | None = Query(default=None),
 ) -> StreamingResponse:
     """
-    Stream live sync progress via Server-Sent Events.
-
-    Opens an SSE connection and streams events for each step of the
-    sync pipeline: collect → understand → document → embed.
+    Stream live sync progress via Server-Sent Events with optional date range filtering.
     """
     async with async_session_factory() as session:
         repo = await db_repo.get_repository(session, repo_id)
@@ -344,7 +368,7 @@ async def sync_repository_live(
         name = repo.name
 
     return StreamingResponse(
-        _run_live_sync(repo_id, owner, name, max_prs),
+        _run_live_sync(repo_id, owner, name, max_prs, from_date, to_date),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

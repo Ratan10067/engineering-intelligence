@@ -35,6 +35,8 @@ router = APIRouter(prefix="/api/repositories", tags=["sync"])
 
 class SyncRequest(BaseModel):
     max_prs: int = 50
+    from_date: str | None = None
+    to_date: str | None = None
 
 
 class SyncResponse(BaseModel):
@@ -48,16 +50,34 @@ async def _run_full_sync(
     owner: str,
     name: str,
     max_prs: int,
+    from_date_str: str | None = None,
+    to_date_str: str | None = None,
 ) -> None:
     """
-    Background task: Full sync pipeline.
+    Background task: Full sync pipeline with optional date range filtering.
 
     1. Collect GitHub data
     2. LLM-based PR understanding
     3. Generate engineering documents
     4. Generate embeddings
     """
+    from_dt: datetime | None = None
+    to_dt: datetime | None = None
+    if from_date_str:
+        try:
+            from_dt = datetime.fromisoformat(from_date_str)
+        except Exception:
+            pass
+    if to_date_str:
+        try:
+            to_dt = datetime.fromisoformat(to_date_str)
+            if to_dt.hour == 0 and to_dt.minute == 0 and to_dt.second == 0:
+                to_dt = to_dt.replace(hour=23, minute=59, second=59)
+        except Exception:
+            pass
+
     async with async_session_factory() as session:
+        # Create sync log
         sync_log = await db_repo.create_sync_log(
             session, repo_id, SyncStatus.COLLECTING
         )
@@ -66,9 +86,13 @@ async def _run_full_sync(
 
         try:
             # ── Phase 1: Collect GitHub Data ────────────────────────────
-            logger.info("Phase 1: Collecting GitHub data for %s/%s", owner, name)
+            logger.info("Sync [%s/%s]: Phase 1 — Collecting GitHub data", owner, name)
+
+            # Get already indexed PR numbers
+            existing_pr_numbers = await db_repo.get_existing_pr_numbers(session, repo_id)
 
             async with GitHubCollector() as collector:
+                # Update repo info
                 repo_info = await collector.get_repository(owner, name)
                 if repo_info:
                     await db_repo.upsert_repository(
@@ -80,9 +104,17 @@ async def _run_full_sync(
                         default_branch=repo_info.get("default_branch", "main"),
                     )
 
-                existing_pr_numbers = await db_repo.get_existing_pr_numbers(session, repo_id)
+                repo = await db_repo.get_repository(session, repo_id)
+                since = repo.last_synced_at if (repo and not from_dt) else None
+
                 pr_data_list = await collector.collect_repository_prs(
-                    owner, name, max_prs=max_prs, since=since, exclude_pr_numbers=existing_pr_numbers
+                    owner,
+                    name,
+                    max_prs=max_prs,
+                    since=since,
+                    from_date=from_dt,
+                    to_date=to_dt,
+                    exclude_pr_numbers=existing_pr_numbers,
                 )
 
             # Store collected data
@@ -238,11 +270,17 @@ async def sync_repository(
         owner=repo.owner,
         name=repo.name,
         max_prs=request.max_prs,
+        from_date_str=request.from_date,
+        to_date_str=request.to_date,
     )
+
+    date_msg = ""
+    if request.from_date or request.to_date:
+        date_msg = f" ({request.from_date or 'start'} to {request.to_date or 'now'})"
 
     return {
         "status": "started",
-        "message": f"Sync started for {repo.full_name} (max {request.max_prs} PRs)",
+        "message": f"Sync started for {repo.full_name} (max {request.max_prs} PRs{date_msg})",
         "sync_log_id": None,
     }
 

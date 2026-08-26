@@ -190,24 +190,42 @@ class GitHubCollector:
         *,
         max_prs: int = 50,
         since: datetime | None = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
         exclude_pr_numbers: set[int] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Fetch merged pull requests, newest first.
+        Fetch merged pull requests, optionally filtered by date range (from_date to to_date)
+        and excluding already indexed PR numbers.
 
         Args:
             owner: Repository owner
             repo: Repository name
             max_prs: Maximum number of PRs to fetch
             since: Only fetch PRs updated after this time
+            from_date: Minimum merge/creation date (inclusive)
+            to_date: Maximum merge/creation date (inclusive)
             exclude_pr_numbers: Set of PR numbers to skip (already indexed in database)
         """
         exclude_set = exclude_pr_numbers or set()
         detailed_prs: list[dict[str, Any]] = []
         page = 1
-        max_pages = 20  # Fetch up to 20 pages (1000 PRs max) if looking for unindexed PRs
+        max_pages = 30  # Search up to 30 pages (1500 PRs max) when querying date ranges
 
-        while len(detailed_prs) < max_prs and page <= max_pages:
+        from_dt = (
+            from_date.replace(tzinfo=timezone.utc)
+            if from_date and not from_date.tzinfo
+            else from_date
+        )
+        to_dt = (
+            to_date.replace(tzinfo=timezone.utc)
+            if to_date and not to_date.tzinfo
+            else to_date
+        )
+
+        should_stop = False
+
+        while len(detailed_prs) < max_prs and page <= max_pages and not should_stop:
             params: dict[str, Any] = {
                 "state": "closed",
                 "sort": "created",
@@ -215,7 +233,7 @@ class GitHubCollector:
                 "per_page": 50,
                 "page": page,
             }
-            if since and not exclude_set:
+            if since and not exclude_set and not from_date:
                 params["since"] = since.isoformat()
 
             page_prs = await self._get_json(
@@ -234,6 +252,31 @@ class GitHubCollector:
                 if pr.get("merged_at") is None:
                     continue
 
+                # Parse PR dates
+                merged_at_str = pr.get("merged_at")
+                created_at_str = pr.get("created_at")
+                pr_date = None
+                if merged_at_str:
+                    try:
+                        pr_date = datetime.fromisoformat(merged_at_str.replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+                elif created_at_str:
+                    try:
+                        pr_date = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+
+                # Date filtering
+                if to_dt and pr_date and pr_date > to_dt:
+                    # Newer than to_date — skip and keep going backwards
+                    continue
+
+                if from_dt and pr_date and pr_date < from_dt:
+                    # Older than from_date (and we sort desc by created) — we passed the date window
+                    should_stop = True
+                    break
+
                 # Skip if already in database
                 if pr["number"] in exclude_set:
                     continue
@@ -250,8 +293,12 @@ class GitHubCollector:
 
             page += 1
 
+        date_desc = ""
+        if from_date or to_date:
+            date_desc = f" (filtered {from_date.strftime('%Y-%m-%d') if from_date else 'start'} to {to_date.strftime('%Y-%m-%d') if to_date else 'now'})"
+
         logger.info(
-            "Fetched %d new merged PRs for %s/%s", len(detailed_prs), owner, repo
+            "Fetched %d merged PRs for %s/%s%s", len(detailed_prs), owner, repo, date_desc
         )
         return detailed_prs
 
@@ -393,6 +440,8 @@ class GitHubCollector:
         *,
         max_prs: int = 50,
         since: datetime | None = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
         exclude_pr_numbers: set[int] | None = None,
         progress_callback: Any = None,
     ) -> list[dict[str, Any]]:
@@ -404,12 +453,20 @@ class GitHubCollector:
             repo: Repository name
             max_prs: Maximum number of PRs to collect
             since: Only collect PRs updated after this time
+            from_date: Minimum merge/creation date (inclusive)
+            to_date: Maximum merge/creation date (inclusive)
             exclude_pr_numbers: Set of PR numbers to skip (already indexed in database)
             progress_callback: Optional async callback(current, total, pr_number)
         """
         # Fetch merged PRs
         prs = await self.get_merged_pull_requests(
-            owner, repo, max_prs=max_prs, since=since, exclude_pr_numbers=exclude_pr_numbers
+            owner,
+            repo,
+            max_prs=max_prs,
+            since=since,
+            from_date=from_date,
+            to_date=to_date,
+            exclude_pr_numbers=exclude_pr_numbers,
         )
 
         logger.info("Collecting full data for %d PRs", len(prs))

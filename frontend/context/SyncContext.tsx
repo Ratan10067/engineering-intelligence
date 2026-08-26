@@ -13,6 +13,8 @@ export interface SyncEvent {
 interface SyncContextType {
   activeRepo: Repository | null;
   maxPrs: number;
+  fromDate: string | null;
+  toDate: string | null;
   isOpen: boolean;
   isMinimized: boolean;
   isSyncing: boolean;
@@ -21,7 +23,7 @@ interface SyncContextType {
   isComplete: boolean;
   hasError: boolean;
   summary: any;
-  startSync: (repo: Repository, maxPrs?: number) => void;
+  startSync: (repo: Repository, maxPrs?: number, fromDate?: string, toDate?: string) => void;
   openModal: (repo?: Repository) => void;
   minimize: () => void;
   restore: () => void;
@@ -45,6 +47,8 @@ export const PHASE_ORDER = ["collecting", "understanding", "documenting", "embed
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const [activeRepo, setActiveRepo] = useState<Repository | null>(null);
   const [maxPrs, setMaxPrs] = useState(10);
+  const [fromDate, setFromDate] = useState<string | null>(null);
+  const [toDate, setToDate] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -84,29 +88,39 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     addEvent("system", { message: "Sync cancelled by user" });
   }, [activeRepo, addEvent]);
 
-  const startSync = useCallback((repo: Repository, prCount: number = 10) => {
-    // If currently running sync for another repo, close previous connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+  const startSync = useCallback(
+    (repo: Repository, prCount: number = 10, fDate?: string, tDate?: string) => {
+      // If currently running sync for another repo, close previous connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
 
-    setActiveRepo(repo);
-    setMaxPrs(prCount);
-    setIsOpen(true);
-    setIsMinimized(false);
-    setIsSyncing(true);
-    setIsComplete(false);
-    setHasError(false);
-    setEvents([]);
-    setPhase("collecting");
-    setSummary(null);
+      const fromVal = fDate && fDate.trim() ? fDate.trim() : null;
+      const toVal = tDate && tDate.trim() ? tDate.trim() : null;
 
-    const url = `${API_BASE}/api/repositories/${repo.id}/sync/live?max_prs=${prCount}`;
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
+      setActiveRepo(repo);
+      setMaxPrs(prCount);
+      setFromDate(fromVal);
+      setToDate(toVal);
+      setIsOpen(true);
+      setIsMinimized(false);
+      setIsSyncing(true);
+      setIsComplete(false);
+      setHasError(false);
+      setEvents([]);
+      setPhase("collecting");
+      setSummary(null);
 
-    addEvent("system", { message: `Connecting to sync stream for ${repo.full_name}...` });
+      let url = `${API_BASE}/api/repositories/${repo.id}/sync/live?max_prs=${prCount}`;
+      if (fromVal) url += `&from_date=${encodeURIComponent(fromVal)}`;
+      if (toVal) url += `&to_date=${encodeURIComponent(toVal)}`;
+
+      const es = new EventSource(url);
+      eventSourceRef.current = es;
+
+      const dateDesc = fromVal || toVal ? ` (${fromVal || 'start'} to ${toVal || 'latest'})` : '';
+      addEvent("system", { message: `Connecting to sync stream for ${repo.full_name}${dateDesc}...` });
 
     es.addEventListener("phase", (e) => {
       const data = JSON.parse(e.data);
@@ -205,6 +219,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       value={{
         activeRepo,
         maxPrs,
+        fromDate,
+        toDate,
         isOpen,
         isMinimized,
         isSyncing,
