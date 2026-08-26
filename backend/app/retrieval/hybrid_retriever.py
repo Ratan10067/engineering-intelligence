@@ -76,13 +76,28 @@ class HybridRetriever:
 
         # Sort by RRF score
         sorted_ids = sorted(scores.keys(), key=lambda d: scores[d], reverse=True)
+        max_rrf = max(scores.values()) if scores else 1.0
 
-        # Build final results with RRF scores
+        # Build final results with normalized scores and RRF metadata
         fused_results = []
         for doc_id in sorted_ids:
             result = best_results[doc_id]
-            result.score = scores[doc_id]
-            result.metadata["rrf_score"] = scores[doc_id]
+            rrf_val = scores[doc_id]
+            result.metadata["rrf_score"] = rrf_val
+
+            # Preserve original vector cosine similarity if available
+            orig_score = result.score
+            # Normalize RRF relative to highest rank
+            relative_rrf = (rrf_val / max_rrf) if max_rrf > 0 else 0.5
+
+            if orig_score > 0.05 and orig_score <= 1.0:
+                # Result had vector similarity: boost slightly if also matched by keyword (high RRF)
+                final_score = min(0.99, orig_score * (1.1 if rrf_val > 0.02 else 1.0))
+            else:
+                # Result from keyword/metadata only: scale relative to top rank (0.50 to 0.90)
+                final_score = 0.50 + (relative_rrf * 0.40)
+
+            result.score = round(final_score, 4)
             fused_results.append(result)
 
         return fused_results
