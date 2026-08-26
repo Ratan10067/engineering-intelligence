@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     pull_requests,
     questions,
+    releases,
     repositories,
     search,
     sync,
@@ -98,6 +99,7 @@ app.include_router(sync_live.router)
 app.include_router(pull_requests.router)
 app.include_router(search.router)
 app.include_router(questions.router)
+app.include_router(releases.router)
 app.include_router(webhooks.router, prefix="/api")
 
 

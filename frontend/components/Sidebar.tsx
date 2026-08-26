@@ -64,6 +64,15 @@ export function Sidebar() {
           {!isCollapsed && <span className="nav-item-label">Q&A</span>}
         </Link>
 
+        <Link
+          href="/releases"
+          className={`nav-item ${pathname === "/releases" ? "active" : ""}`}
+          title={isCollapsed ? "Release Notes" : undefined}
+        >
+          <span className="nav-item-icon">🚀</span>
+          {!isCollapsed && <span className="nav-item-label">Release Notes</span>}
+        </Link>
+
         <div className="sidebar-section-title">
           {!isCollapsed ? "Common Queries" : "···"}
         </div>

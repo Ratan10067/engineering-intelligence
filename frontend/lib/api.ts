@@ -145,32 +145,60 @@ export interface Stats {
   engineering_documents: number;
 }
 
+export interface ReleaseNotesStats {
+  total_prs: number;
+  total_additions: number;
+  total_deletions: number;
+  authors_count: number;
+  authors: string[];
+  change_types: Record<string, number>;
+  components: string[];
+}
+
+export interface ReleaseNotesResponse {
+  repo_name: string;
+  release_title: string;
+  markdown: string;
+  stats: ReleaseNotesStats;
+  target_audience: string;
+  generated_at: string;
+}
+
+export interface GenerateReleaseNotesParams {
+  repo_id: number;
+  limit?: number;
+  from_date?: string;
+  to_date?: string;
+  target_audience?: "executive" | "engineers" | "public";
+  release_version?: string;
+}
+
 // ── API Functions ────────────────────────────────────────────────────────
 
 export const api = {
+  // Base
+  baseUrl: API_BASE,
+
   // Repositories
   getRepositories: () => request<Repository[]>('/api/repositories'),
-
-  createRepository: (full_name: string) =>
+  getRepository: (id: number) => request<Repository>(`/api/repositories/${id}`),
+  addRepository: (fullName: string) =>
     request<Repository>('/api/repositories', {
       method: 'POST',
-      body: JSON.stringify({ full_name }),
+      body: JSON.stringify({ full_name: fullName }),
     }),
-
-  getRepository: (id: number) => request<Repository>(`/api/repositories/${id}`),
+  createRepository: (fullName: string) =>
+    request<Repository>('/api/repositories', {
+      method: 'POST',
+      body: JSON.stringify({ full_name: fullName }),
+    }),
 
   // Sync
-  syncRepository: (id: number, maxPrs: number = 50) =>
-    request<{ status: string; message: string }>(`/api/repositories/${id}/sync`, {
+  syncRepository: (id: number, maxPrs = 10, fromDate?: string, toDate?: string) =>
+    request<{ task_id: string; message: string }>(`/api/repositories/${id}/sync`, {
       method: 'POST',
-      body: JSON.stringify({ max_prs: maxPrs }),
+      body: JSON.stringify({ max_prs: maxPrs, from_date: fromDate, to_date: toDate }),
     }),
-
-  getSyncStatus: (id: number) =>
-    request<{ sync_status: string; total_prs_synced: number; last_synced_at: string | null }>(
-      `/api/repositories/${id}/status`
-    ),
-
   cancelSync: (id: number) =>
     request<{ status: string; message: string }>(`/api/repositories/${id}/cancel`, {
       method: 'POST',
@@ -213,12 +241,14 @@ export const api = {
     top_k?: number;
     release?: string;
     components?: string[];
+    change_types?: string[];
   }) =>
-    request<QuestionResponse>('/api/questions', {
+    request<QuestionResponse>('/api/questions/ask', {
       method: 'POST',
       body: JSON.stringify(params),
     }),
 
+  // Streaming Q&A
   askQuestionStream: async (
     params: {
       question: string;
@@ -226,15 +256,17 @@ export const api = {
       top_k?: number;
       release?: string;
       components?: string[];
+      change_types?: string[];
     },
     callbacks: {
-      onEvidence?: (evidence: EvidenceItem[], latency: any) => void;
+      onEvidence?: (evidence: EvidenceItem[], latency: QuestionResponse['latency']) => void;
       onToken?: (token: string) => void;
-      onDone?: (response: QuestionResponse) => void;
-      onError?: (error: Error) => void;
+      onDone?: (data: any) => void;
+      onError?: (err: Error) => void;
     }
   ) => {
-    const res = await fetch(`${API_BASE}/api/questions/stream`, {
+    const url = `${API_BASE}/api/questions/stream`;
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -271,6 +303,71 @@ export const api = {
               callbacks.onToken?.(data.token);
             } else if (data.type === 'done') {
               callbacks.onDone?.(data);
+            } else if (data.type === 'error') {
+              callbacks.onError?.(new Error(data.message));
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  },
+
+  // Release Notes Generator
+  generateReleaseNotes: (params: GenerateReleaseNotesParams) =>
+    request<ReleaseNotesResponse>('/api/releases/generate', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }),
+
+  streamReleaseNotes: async (
+    params: GenerateReleaseNotesParams,
+    callbacks: {
+      onInit?: (data: { repo_name: string; release_title: string; stats: ReleaseNotesStats; target_audience: string }) => void;
+      onToken?: (token: string) => void;
+      onDone?: () => void;
+      onError?: (err: Error) => void;
+    }
+  ) => {
+    const url = `${API_BASE}/api/releases/stream`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (!res.ok) {
+      const err = new Error(`HTTP error ${res.status}`);
+      callbacks.onError?.(err);
+      throw err;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            if (data.type === 'init') {
+              callbacks.onInit?.(data);
+            } else if (data.type === 'token') {
+              callbacks.onToken?.(data.token);
+            } else if (data.type === 'done') {
+              callbacks.onDone?.();
             } else if (data.type === 'error') {
               callbacks.onError?.(new Error(data.message));
             }
