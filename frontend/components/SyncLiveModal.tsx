@@ -15,6 +15,8 @@ interface SyncLiveModalProps {
   repoId: number | null;
   repoName: string;
   maxPrs: number;
+  minimized?: boolean;
+  onToggleMinimize?: (minimized: boolean) => void;
   onClose: () => void;
 }
 
@@ -31,13 +33,27 @@ const PHASE_ORDER = ["collecting", "understanding", "documenting", "embedding"];
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-export function SyncLiveModal({ repoId, repoName, maxPrs, onClose }: SyncLiveModalProps) {
+export function SyncLiveModal({
+  repoId,
+  repoName,
+  maxPrs,
+  minimized: controlledMinimized,
+  onToggleMinimize,
+  onClose,
+}: SyncLiveModalProps) {
   const [events, setEvents] = useState<SyncEvent[]>([]);
   const [phase, setPhase] = useState<string>("idle");
   const [isComplete, setIsComplete] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [expandedLLM, setExpandedLLM] = useState<Set<number>>(new Set());
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [internalMinimized, setInternalMinimized] = useState(false);
+  const isMinimized = controlledMinimized !== undefined ? controlledMinimized : internalMinimized;
+
+  const setMinimized = (val: boolean) => {
+    setInternalMinimized(val);
+    onToggleMinimize?.(val);
+  };
+
   const [summary, setSummary] = useState<any>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -337,7 +353,7 @@ export function SyncLiveModal({ repoId, repoName, maxPrs, onClose }: SyncLiveMod
     return (
       <div
         className="sync-minimized-widget"
-        onClick={() => setIsMinimized(false)}
+        onClick={() => setMinimized(false)}
         title="Click to reopen full sync window"
       >
         <div className="sync-minimized-left">
@@ -364,7 +380,7 @@ export function SyncLiveModal({ repoId, repoName, maxPrs, onClose }: SyncLiveMod
         <div className="sync-minimized-actions" onClick={(e) => e.stopPropagation()}>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => setIsMinimized(false)}
+            onClick={() => setMinimized(false)}
             title="Expand to full screen"
           >
             ↗ Open
@@ -410,7 +426,7 @@ export function SyncLiveModal({ repoId, repoName, maxPrs, onClose }: SyncLiveMod
             )}
             <button
               className="btn btn-secondary btn-sm"
-              onClick={() => setIsMinimized(true)}
+              onClick={() => setMinimized(true)}
               title="Minimize to floating widget"
             >
               − Minimize

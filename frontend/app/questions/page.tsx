@@ -2,6 +2,8 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   api,
   type Repository,
@@ -154,7 +156,11 @@ function QuestionsContent() {
               </div>
             </div>
 
-            <div className="answer-text">{response.answer}</div>
+            <div className="answer-text markdown-content">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {response.answer}
+              </ReactMarkdown>
+            </div>
 
             {/* Latency Footer */}
             <div

@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [syncMax, setSyncMax] = useState(10);
   const [activePRId, setActivePRId] = useState<number | null>(null);
   const [syncLiveRepo, setSyncLiveRepo] = useState<Repository | null>(null);
+  const [syncModalMinimized, setSyncModalMinimized] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -55,10 +56,12 @@ export default function DashboardPage() {
 
   function handleSync(repo: Repository) {
     setSyncLiveRepo(repo);
+    setSyncModalMinimized(false);
   }
 
   function handleSyncLiveClose() {
     setSyncLiveRepo(null);
+    setSyncModalMinimized(false);
     loadDashboardData();
   }
 
@@ -291,6 +294,8 @@ export default function DashboardPage() {
           repoId={syncLiveRepo.id}
           repoName={syncLiveRepo.full_name}
           maxPrs={syncMax}
+          minimized={syncModalMinimized}
+          onToggleMinimize={setSyncModalMinimized}
           onClose={handleSyncLiveClose}
         />
       )}
