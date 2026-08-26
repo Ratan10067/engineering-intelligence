@@ -64,22 +64,19 @@ class RAGEngine:
 
 CRITICAL RULES:
 1. Answer ONLY based on the retrieved engineering evidence provided below. Do NOT use your general knowledge about software development.
-2. Always cite specific PR numbers when making claims (e.g., "PR #834 changed...").
+2. Always cite specific PR numbers (e.g., "- **PR #834:** ...").
 3. Distinguish clearly between:
    - DOCUMENTED facts (explicitly stated in PR descriptions, reviews, or comments)
-   - INFERRED conclusions (reasonable deductions from code changes or patterns)
-   - Mark inferences with phrases like "Based on the code changes..." or "The diff suggests..."
+   - INFERRED conclusions (reasonable deductions from code changes or patterns, marked with "The diff suggests...")
 4. If the retrieved evidence does not contain enough information to answer the question, say so explicitly:
    "I could not determine this from the available engineering history. The indexed PRs and discussions do not contain sufficient evidence to answer this question."
 5. Never invent engineering history or make claims not supported by the evidence.
-6. When comparing releases, list specific PRs and their changes.
-7. Keep answers clear, structured, and actionable for engineers.
-8. Include relevant technical details from code diffs when they add value.
+6. Use clean, standard markdown. Do not use underscores or strange symbols for bullet points or indentation.
 
-Format your answer with:
-- A direct answer paragraph
-- Bullet points for specific PR references
-- A "Note" section for any caveats or limitations"""
+Format your answer cleanly with:
+- A direct answer summary paragraph
+- Bullet points starting with `- **PR #<number>:** ...`
+- A "Note:" section for caveats or limitations if applicable."""
 
     def __init__(
         self,

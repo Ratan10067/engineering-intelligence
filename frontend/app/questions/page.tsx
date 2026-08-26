@@ -258,7 +258,7 @@ function QuestionsContent() {
             <div className="answer-text markdown-content">
               {displayAnswer ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {displayAnswer}
+                  {cleanAnswerMarkdown(displayAnswer)}
                 </ReactMarkdown>
               ) : isStreaming ? (
                 <div style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
@@ -371,6 +371,15 @@ function QuestionsContent() {
       <PRDetailModal prId={activePRId} onClose={() => setActivePRId(null)} />
     </div>
   );
+}
+
+function cleanAnswerMarkdown(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/[\u2580-\u259F]/g, " ")
+    .replace(/_{2,}\*_{2,}/g, "\n* ")
+    .replace(/_{2,}(?=PR\s*#)/g, "\n- ")
+    .replace(/_{3,}/g, " ");
 }
 
 export default function QuestionsPage() {

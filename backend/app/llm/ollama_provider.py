@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def _clean_llm_text(text: str) -> str:
+    """Sanitize LLM output to remove SentencePiece tokens and formatting glitches."""
+    if not text:
+        return ""
+    import re
+    # 1. Replace SentencePiece subword and block characters (\u2580-\u259F) with spaces
+    text = re.sub(r"[\u2580-\u259f]", " ", text)
+    # 2. Normalize weird underscore sequences from small models
+    text = re.sub(r"_{2,}\*_{2,}", "\n* ", text)
+    text = re.sub(r"_{2,}(?=PR\s*#)", "\n- ", text)
+    text = re.sub(r"_{3,}", " ", text)
+    return text
+
+
 class OllamaProvider(LLMProvider):
     """
     Ollama LLM provider using the local REST API.
@@ -94,7 +108,7 @@ class OllamaProvider(LLMProvider):
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
             return LLMResponse(
-                content=data.get("response", ""),
+                content=_clean_llm_text(data.get("response", "")),
                 model=data.get("model", self.model),
                 prompt_tokens=data.get("prompt_eval_count", 0),
                 completion_tokens=data.get("eval_count", 0),
@@ -147,7 +161,7 @@ class OllamaProvider(LLMProvider):
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
         return LLMResponse(
-            content=data.get("message", {}).get("content", ""),
+            content=_clean_llm_text(data.get("message", {}).get("content", "")),
             model=data.get("model", self.model),
             prompt_tokens=data.get("prompt_eval_count", 0),
             completion_tokens=data.get("eval_count", 0),
@@ -191,8 +205,10 @@ class OllamaProvider(LLMProvider):
                     if line:
                         try:
                             data = json.loads(line)
-                            chunk = data.get("response", "")
-                            if chunk:
+                            raw_chunk = data.get("response", "")
+                            if raw_chunk:
+                                # Clean SentencePiece block characters from token stream
+                                chunk = raw_chunk.replace("\u2581", " ")
                                 yield chunk
                             if data.get("done", False):
                                 break
