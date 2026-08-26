@@ -133,6 +133,31 @@ class LLMProvider(ABC):
             **kwargs,
         )
         return response.to_json()
+
+    async def generate_stream(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+        **kwargs: Any,
+    ):
+        """
+        Stream text completion tokens.
+
+        Yields string chunks as they are generated.
+        """
+        # Default non-streaming fallback if not overridden
+        res = await self.generate(
+            prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs,
+        )
+        yield res.content
+
     @abstractmethod
     async def health_check(self) -> bool:
         """Check if the LLM provider is available."""

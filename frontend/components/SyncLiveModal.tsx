@@ -1,172 +1,35 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSync, PHASE_LABELS, PHASE_ORDER, type SyncEvent } from "@/context/SyncContext";
 
-// ── Types ─────────────────────────────────────────────────────────────────
+export function SyncLiveModal() {
+  const {
+    activeRepo,
+    maxPrs,
+    isOpen,
+    isMinimized,
+    isSyncing,
+    events,
+    phase,
+    isComplete,
+    hasError,
+    summary,
+    minimize,
+    restore,
+    close,
+    stop,
+  } = useSync();
 
-interface SyncEvent {
-  id: number;
-  type: string;
-  data: any;
-  timestamp: Date;
-}
-
-interface SyncLiveModalProps {
-  repoId: number | null;
-  repoName: string;
-  maxPrs: number;
-  minimized?: boolean;
-  onToggleMinimize?: (minimized: boolean) => void;
-  onClose: () => void;
-}
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-const PHASE_LABELS: Record<string, string> = {
-  collecting: "Fetching PRs",
-  understanding: "LLM Analysis",
-  documenting: "Creating Docs",
-  embedding: "Embeddings",
-};
-
-const PHASE_ORDER = ["collecting", "understanding", "documenting", "embedding"];
-
-// ── Component ─────────────────────────────────────────────────────────────
-
-export function SyncLiveModal({
-  repoId,
-  repoName,
-  maxPrs,
-  minimized: controlledMinimized,
-  onToggleMinimize,
-  onClose,
-}: SyncLiveModalProps) {
-  const [events, setEvents] = useState<SyncEvent[]>([]);
-  const [phase, setPhase] = useState<string>("idle");
-  const [isComplete, setIsComplete] = useState(false);
-  const [hasError, setHasError] = useState(false);
   const [expandedLLM, setExpandedLLM] = useState<Set<number>>(new Set());
-  const [internalMinimized, setInternalMinimized] = useState(false);
-  const isMinimized = controlledMinimized !== undefined ? controlledMinimized : internalMinimized;
-
-  const setMinimized = (val: boolean) => {
-    setInternalMinimized(val);
-    onToggleMinimize?.(val);
-  };
-
-  const [summary, setSummary] = useState<any>(null);
   const feedRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const eventIdRef = useRef(0);
-
-  const addEvent = useCallback((type: string, data: any) => {
-    const evt: SyncEvent = {
-      id: eventIdRef.current++,
-      type,
-      data,
-      timestamp: new Date(),
-    };
-    setEvents((prev) => [...prev, evt]);
-  }, []);
 
   // Auto-scroll feed
   useEffect(() => {
-    if (feedRef.current && !isMinimized) {
+    if (feedRef.current && isOpen && !isMinimized) {
       feedRef.current.scrollTop = feedRef.current.scrollHeight;
     }
-  }, [events, isMinimized]);
-
-  // Connect to SSE on mount
-  useEffect(() => {
-    if (!repoId) return;
-
-    const url = `${API_BASE}/api/repositories/${repoId}/sync/live?max_prs=${maxPrs}`;
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
-
-    addEvent("system", { message: `Connecting to sync stream for ${repoName}...` });
-
-    es.addEventListener("phase", (e) => {
-      const data = JSON.parse(e.data);
-      setPhase(data.phase);
-      addEvent("phase", data);
-    });
-
-    es.addEventListener("fetch_summary", (e) => {
-      addEvent("fetch_summary", JSON.parse(e.data));
-    });
-
-    es.addEventListener("pr_fetched", (e) => {
-      addEvent("pr_fetched", JSON.parse(e.data));
-    });
-
-    es.addEventListener("pr_error", (e) => {
-      addEvent("pr_error", JSON.parse(e.data));
-    });
-
-    es.addEventListener("llm_start", (e) => {
-      addEvent("llm_start", JSON.parse(e.data));
-    });
-
-    es.addEventListener("pr_understood", (e) => {
-      addEvent("pr_understood", JSON.parse(e.data));
-    });
-
-    es.addEventListener("llm_failed", (e) => {
-      addEvent("llm_failed", JSON.parse(e.data));
-    });
-
-    es.addEventListener("docs_created", (e) => {
-      addEvent("docs_created", JSON.parse(e.data));
-    });
-
-    es.addEventListener("embeddings_done", (e) => {
-      addEvent("embeddings_done", JSON.parse(e.data));
-    });
-
-    es.addEventListener("completed", (e) => {
-      const data = JSON.parse(e.data);
-      setSummary(data);
-      setIsComplete(true);
-      setPhase("completed");
-      addEvent("completed", data);
-      es.close();
-    });
-
-    es.addEventListener("error", (e) => {
-      try {
-        const data = JSON.parse((e as any).data);
-        addEvent("error", data);
-      } catch {
-        addEvent("error", { message: "Connection lost" });
-      }
-      setHasError(true);
-      es.close();
-    });
-
-    es.onerror = () => {
-      if (!isComplete) {
-        if (es.readyState === EventSource.CLOSED && !isComplete) {
-          // Stream ended
-        }
-      }
-    };
-
-    return () => {
-      es.close();
-    };
-  }, [repoId, repoName, maxPrs, addEvent]);
-
-  const handleStop = async () => {
-    eventSourceRef.current?.close();
-    try {
-      await fetch(`${API_BASE}/api/repositories/${repoId}/cancel`, { method: "POST" });
-      addEvent("system", { message: "Sync cancelled by user" });
-      setPhase("cancelled");
-    } catch (e) {
-      // ignore
-    }
-  };
+  }, [events, isOpen, isMinimized]);
 
   const toggleLLM = (eventId: number) => {
     setExpandedLLM((prev) => {
@@ -177,12 +40,14 @@ export function SyncLiveModal({
     });
   };
 
-  if (!repoId) return null;
+  if (!activeRepo || (!isOpen && !isMinimized)) return null;
+
+  const repoName = activeRepo.full_name;
 
   // ── Render helpers ───────────────────────────────────────────────────
 
   function renderEvent(evt: SyncEvent) {
-    const time = evt.timestamp.toLocaleTimeString();
+    const time = new Date(evt.timestamp).toLocaleTimeString();
 
     switch (evt.type) {
       case "system":
@@ -353,7 +218,7 @@ export function SyncLiveModal({
     return (
       <div
         className="sync-minimized-widget"
-        onClick={() => setMinimized(false)}
+        onClick={restore}
         title="Click to reopen full sync window"
       >
         <div className="sync-minimized-left">
@@ -380,7 +245,7 @@ export function SyncLiveModal({
         <div className="sync-minimized-actions" onClick={(e) => e.stopPropagation()}>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => setMinimized(false)}
+            onClick={restore}
             title="Expand to full screen"
           >
             ↗ Open
@@ -389,7 +254,7 @@ export function SyncLiveModal({
             <button
               className="btn btn-sm"
               style={{ background: "#ef4444", color: "#fff", border: "none", padding: "2px 6px" }}
-              onClick={handleStop}
+              onClick={stop}
               title="Stop sync"
             >
               ■
@@ -398,7 +263,7 @@ export function SyncLiveModal({
           <button
             className="btn btn-secondary btn-sm"
             style={{ padding: "2px 6px" }}
-            onClick={onClose}
+            onClick={close}
             title="Close"
           >
             ✕
@@ -410,7 +275,7 @@ export function SyncLiveModal({
 
   // ── Render Full Modal ────────────────────────────────────────────────
   return (
-    <div className="sync-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="sync-modal-overlay" onClick={(e) => e.target === e.currentTarget && close()}>
       <div className="sync-modal">
         {/* Header */}
         <div className="sync-modal-header">
@@ -420,18 +285,18 @@ export function SyncLiveModal({
           </div>
           <div className="sync-modal-actions">
             {!isComplete && !hasError && phase !== "cancelled" && (
-              <button className="btn btn-sm" style={{ background: "#ef4444", color: "#fff", border: "none" }} onClick={handleStop}>
+              <button className="btn btn-sm" style={{ background: "#ef4444", color: "#fff", border: "none" }} onClick={stop}>
                 ■ Stop
               </button>
             )}
             <button
               className="btn btn-secondary btn-sm"
-              onClick={() => setMinimized(true)}
+              onClick={minimize}
               title="Minimize to floating widget"
             >
               − Minimize
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={onClose} title="Close window">
+            <button className="btn btn-secondary btn-sm" onClick={close} title="Close window">
               ✕ Close
             </button>
           </div>

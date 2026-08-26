@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
+import { SyncProvider } from "@/context/SyncContext";
+import { SyncLiveModal } from "@/components/SyncLiveModal";
 
 export const metadata: Metadata = {
   title: "Engineering Intelligence Platform — Searchable Engineering Memory",
@@ -16,10 +18,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="app-layout">
-          <Sidebar />
-          <main className="main-content">{children}</main>
-        </div>
+        <SyncProvider>
+          <div className="app-layout">
+            <Sidebar />
+            <main className="main-content">{children}</main>
+          </div>
+          <SyncLiveModal />
+        </SyncProvider>
       </body>
     </html>
   );

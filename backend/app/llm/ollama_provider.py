@@ -157,6 +157,51 @@ class OllamaProvider(LLMProvider):
             latency_ms=elapsed_ms,
         )
 
+    async def generate_stream(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+        **kwargs: Any,
+    ):
+        """Stream completion tokens directly from Ollama."""
+        client = await self._get_client()
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": True,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        import json
+
+        try:
+            async with client.stream("POST", "/api/generate", json=payload, timeout=120.0) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            chunk = data.get("response", "")
+                            if chunk:
+                                yield chunk
+                            if data.get("done", False):
+                                break
+                        except Exception:
+                            continue
+        except Exception as e:
+            logger.error("Ollama streaming error: %s", e)
+            yield f"\n[Streaming error: {str(e)}]"
+
     async def health_check(self) -> bool:
         """Check if Ollama is running and the model is available."""
         try:

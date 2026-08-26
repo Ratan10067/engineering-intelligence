@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api, type Repository, type Stats, type PullRequest } from "@/lib/api";
 import { Header } from "@/components/Header";
 import { PRDetailModal } from "@/components/PRDetailModal";
-import { SyncLiveModal } from "@/components/SyncLiveModal";
+import { useSync } from "@/context/SyncContext";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -16,8 +16,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [syncMax, setSyncMax] = useState(10);
   const [activePRId, setActivePRId] = useState<number | null>(null);
-  const [syncLiveRepo, setSyncLiveRepo] = useState<Repository | null>(null);
-  const [syncModalMinimized, setSyncModalMinimized] = useState(false);
+  const sync = useSync();
 
   useEffect(() => {
     loadDashboardData();
@@ -55,14 +54,11 @@ export default function DashboardPage() {
   }
 
   function handleSync(repo: Repository) {
-    setSyncLiveRepo(repo);
-    setSyncModalMinimized(false);
-  }
-
-  function handleSyncLiveClose() {
-    setSyncLiveRepo(null);
-    setSyncModalMinimized(false);
-    loadDashboardData();
+    if (sync.activeRepo?.id === repo.id) {
+      sync.openModal(repo);
+    } else {
+      sync.startSync(repo, syncMax);
+    }
   }
 
   async function handleCancelSync(repoId: number) {
@@ -287,18 +283,6 @@ export default function DashboardPage() {
 
       {/* PR Detail Modal */}
       <PRDetailModal prId={activePRId} onClose={() => setActivePRId(null)} />
-
-      {/* Live Sync Modal */}
-      {syncLiveRepo && (
-        <SyncLiveModal
-          repoId={syncLiveRepo.id}
-          repoName={syncLiveRepo.full_name}
-          maxPrs={syncMax}
-          minimized={syncModalMinimized}
-          onToggleMinimize={setSyncModalMinimized}
-          onClose={handleSyncLiveClose}
-        />
-      )}
     </div>
   );
 }

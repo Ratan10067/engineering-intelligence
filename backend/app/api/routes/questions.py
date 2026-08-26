@@ -87,6 +87,48 @@ async def ask_question(
     return response.to_dict()
 
 
+@router.post("/stream")
+async def ask_question_stream(
+    request: QuestionRequest,
+    session: AsyncSession = Depends(get_db_session),
+    rag_engine: RAGEngine = Depends(get_rag_engine),
+) -> StreamingResponse:
+    """
+    Stream answer tokens and retrieved evidence in real-time via Server-Sent Events.
+    """
+    filters = None
+    if any([request.release, request.components, request.change_types]):
+        filters = MetadataFilters(
+            release=request.release,
+            components=request.components,
+            change_types=request.change_types,
+            repo_id=request.repo_id,
+        )
+
+    import json
+
+    async def event_generator():
+        async for event in rag_engine.ask_stream(
+            session,
+            request.question,
+            repo_id=request.repo_id,
+            filters=filters,
+            top_k=request.top_k,
+        ):
+            payload = json.dumps(event, default=str)
+            yield f"data: {payload}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/stats")
 async def get_stats(
     session: AsyncSession = Depends(get_db_session),

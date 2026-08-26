@@ -188,6 +188,69 @@ export const api = {
       body: JSON.stringify(params),
     }),
 
+  askQuestionStream: async (
+    params: {
+      question: string;
+      repo_id?: number;
+      top_k?: number;
+      release?: string;
+      components?: string[];
+    },
+    callbacks: {
+      onEvidence?: (evidence: EvidenceItem[], latency: any) => void;
+      onToken?: (token: string) => void;
+      onDone?: (response: QuestionResponse) => void;
+      onError?: (error: Error) => void;
+    }
+  ) => {
+    const res = await fetch(`${API_BASE}/api/questions/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (!res.ok) {
+      const err = new Error(`HTTP error ${res.status}`);
+      callbacks.onError?.(err);
+      throw err;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            if (data.type === 'evidence') {
+              callbacks.onEvidence?.(data.evidence, data.latency);
+            } else if (data.type === 'token') {
+              callbacks.onToken?.(data.token);
+            } else if (data.type === 'done') {
+              callbacks.onDone?.(data);
+            } else if (data.type === 'error') {
+              callbacks.onError?.(new Error(data.message));
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  },
+
   // Stats
   getStats: () => request<Stats>('/api/questions/stats'),
 
