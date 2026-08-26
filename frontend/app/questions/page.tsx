@@ -257,12 +257,24 @@ function QuestionsContent() {
 
             <div className="answer-text markdown-content">
               {displayAnswer ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {cleanAnswerMarkdown(displayAnswer)}
-                </ReactMarkdown>
+                <div>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {cleanAnswerMarkdown(displayAnswer)}
+                  </ReactMarkdown>
+                  {isStreaming && (
+                    <div style={{ display: "inline-flex", alignItems: "center", marginTop: 4 }}>
+                      <span className="streaming-cursor">
+                        <span className="streaming-spark-icon">✦</span>
+                        <span className="streaming-cursor-bar" />
+                      </span>
+                    </div>
+                  )}
+                </div>
               ) : isStreaming ? (
-                <div style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
-                  Generating answer from retrieved evidence...
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-secondary)", fontStyle: "italic" }}>
+                  <span className="streaming-spark-icon">✦</span>
+                  <span>Generating evidence-backed answer...</span>
+                  <span className="streaming-cursor-bar" />
                 </div>
               ) : null}
             </div>

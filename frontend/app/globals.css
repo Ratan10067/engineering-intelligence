@@ -1248,3 +1248,65 @@ a:hover {
     transform: translateY(0);
   }
 }
+
+/* ── Streaming AI Cursor & Icon ─────────────────────────────────────────── */
+
+.streaming-cursor {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.streaming-spark-icon {
+  display: inline-block;
+  font-size: 1.1em;
+  line-height: 1;
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: sparkRotate 3s ease-in-out infinite, sparkPulse 1.2s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.6));
+}
+
+.streaming-cursor-bar {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  background: var(--accent-primary, #6366f1);
+  border-radius: 2px;
+  animation: cursorBlink 0.8s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.7);
+}
+
+@keyframes sparkRotate {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.25);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes sparkPulse {
+  0% {
+    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
+  }
+  100% {
+    filter: drop-shadow(0 0 12px rgba(236, 72, 153, 0.8));
+  }
+}
+
+@keyframes cursorBlink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
