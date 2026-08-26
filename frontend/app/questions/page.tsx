@@ -293,10 +293,10 @@ function QuestionsContent() {
                   flexWrap: "wrap",
                 }}
               >
-                <span>Retrieval: <strong>{response.latency.retrieval_ms?.toFixed(0)}ms</strong></span>
-                <span>Context: <strong>{response.latency.context_ms?.toFixed(0)}ms</strong></span>
-                <span>LLM: <strong>{response.latency.llm_ms?.toFixed(0)}ms</strong></span>
-                <span>Total: <strong>{response.latency.total_ms?.toFixed(0)}ms</strong></span>
+                <span>Retrieval: <strong>{((response.latency.retrieval_ms || 0) / 1000).toFixed(2)}s</strong></span>
+                <span>Context: <strong>{((response.latency.context_ms || 0) / 1000).toFixed(2)}s</strong></span>
+                <span>LLM: <strong>{((response.latency.llm_ms || 0) / 1000).toFixed(2)}s</strong></span>
+                <span>Total: <strong>{((response.latency.total_ms || 0) / 1000).toFixed(2)}s</strong></span>
               </div>
             )}
           </div>
