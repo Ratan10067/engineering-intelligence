@@ -93,8 +93,8 @@ class LLMProvider(ABC):
             max_tokens=max_tokens,
             **kwargs,
         )
+        print("LLM raw response:  ", response.content)
         return response.to_json()
-
     @abstractmethod
     async def health_check(self) -> bool:
         """Check if the LLM provider is available."""

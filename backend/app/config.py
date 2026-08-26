@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # ── Ollama (Local LLM) ─────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "gemma3:12b-it-q4_K_M"
+    ollama_model: str = "gemma3n:e2b"
 
     # ── Embedding Model ────────────────────────────────────────────────
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"

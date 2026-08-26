@@ -10,17 +10,18 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-
+import os
 import numpy as np
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from pathlib import Path
 from app.config import get_settings
 from app.db.models import EngineeringDocument
 
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
 
 
 class EmbeddingService:
@@ -35,13 +36,23 @@ class EmbeddingService:
         self.model_name = model_name or settings.embedding_model
         self._model = None
 
+    # def _load_model(self) -> Any:
+    #     """Lazy-load the embedding model."""
+    #     if self._model is None:
+    #         logger.info("Loading embedding model: %s", self.model_name)
+    #         from sentence_transformers import SentenceTransformer
+    #         model_path = str(Path(self.model_name).expanduser())
+    #         self._model = SentenceTransformer(self.model_name)
+    #         logger.info("Embedding model loaded successfully")
+    #     return self._model
+
     def _load_model(self) -> Any:
         """Lazy-load the embedding model."""
         if self._model is None:
             logger.info("Loading embedding model: %s", self.model_name)
             from sentence_transformers import SentenceTransformer
-
-            self._model = SentenceTransformer(self.model_name)
+            model_path = r"C:\Users\ratan.k1\Desktop\Rag\all-MiniLM-L6-v2"
+            self._model = SentenceTransformer(model_path)
             logger.info("Embedding model loaded successfully")
         return self._model
 
