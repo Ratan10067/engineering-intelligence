@@ -200,21 +200,31 @@ function QuestionsContent() {
           </button>
         </div>
 
-        {/* Quick Example Questions */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: "0.75rem", color: "var(--text-tertiary)" }}>Examples:</span>
-          {exampleQuestions.map((eq, idx) => (
-            <button
-              key={idx}
-              className="tag"
-              onClick={() => {
-                setQuestion(eq);
-                executeAsk(eq);
-              }}
-            >
-              {eq}
-            </button>
-          ))}
+        {/* Quick Example Questions Carousel */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+          <span style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", flexShrink: 0 }}>Examples:</span>
+          <div className="carousel-container" style={{ flex: 1 }}>
+            {exampleQuestions.map((eq, idx) => (
+              <button
+                key={idx}
+                className="tag"
+                style={{
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                  fontSize: "0.75rem",
+                  padding: "3px 10px",
+                  borderRadius: 999,
+                  transition: "all 120ms ease",
+                }}
+                onClick={() => {
+                  setQuestion(eq);
+                  executeAsk(eq);
+                }}
+              >
+                💡 {eq}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

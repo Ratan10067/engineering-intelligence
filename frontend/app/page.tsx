@@ -117,24 +117,26 @@ export default function DashboardPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>Sync limit:</span>
-              <input
-                type="number"
-                className="input"
-                style={{ width: 64, textAlign: "center", padding: "4px 8px", fontSize: "0.82rem" }}
-                min={1}
-                max={500}
-                value={syncMax}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val > 0) setSyncMax(val);
-                }}
-              />
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>PRs</span>
-              {[10, 20, 50, 100].map((n) => (
+              <div className="range-slider-wrap">
+                <input
+                  type="range"
+                  min={5}
+                  max={100}
+                  step={5}
+                  className="range-slider"
+                  value={Math.min(syncMax, 100)}
+                  onChange={(e) => setSyncMax(Number(e.target.value))}
+                  title={`Adjust PR sync limit: ${syncMax}`}
+                />
+                <span className="badge badge-neutral font-mono" style={{ fontWeight: 600, minWidth: 62, textAlign: "center" }}>
+                  {syncMax} PRs
+                </span>
+              </div>
+              {[10, 25, 50, 100].map((n) => (
                 <button
                   key={n}
                   className={`btn btn-sm ${syncMax === n ? "btn-primary" : "btn-secondary"}`}
-                  style={{ padding: "2px 6px", fontSize: "0.72rem", minWidth: 0 }}
+                  style={{ padding: "2px 8px", fontSize: "0.72rem", minWidth: 0 }}
                   onClick={() => setSyncMax(n)}
                 >
                   {n}

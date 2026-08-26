@@ -5,6 +5,15 @@ import { api, type Repository, type SearchResult } from "@/lib/api";
 import { Header } from "@/components/Header";
 import { PRDetailModal } from "@/components/PRDetailModal";
 
+const EXAMPLE_SEARCHES = [
+  "cache eviction and invalidation",
+  "memory leak fix in worker thread",
+  "Rust compiler upgrade nightly",
+  "authentication token refresh middleware",
+  "turbopack build performance",
+  "breaking API changes",
+];
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -18,6 +27,7 @@ export default function SearchPage() {
   const [release, setRelease] = useState("");
   const [author, setAuthor] = useState("");
   const [changeType, setChangeType] = useState("");
+  const [minScore, setMinScore] = useState(0);
 
   useEffect(() => {
     api.getRepositories().then(setRepos).catch(console.error);
@@ -29,7 +39,7 @@ export default function SearchPage() {
     setLoading(true);
     setSearched(true);
     try {
-      const params: any = { query: q.trim(), top_k: 20 };
+      const params: any = { query: q.trim(), top_k: 30 };
       if (selectedRepo) params.repo_id = selectedRepo;
       if (release) params.release = release;
       if (author) params.author = author;
@@ -44,17 +54,21 @@ export default function SearchPage() {
     }
   }
 
+  const filteredResults = results.filter(
+    (r) => Math.round(r.score * 100) >= minScore
+  );
+
   return (
     <div>
       <Header
-        title="Search"
+        title="Search Engineering Memory"
         selectedRepoId={selectedRepo}
         onSelectRepo={setSelectedRepo}
       />
 
       <div className="card">
         {/* Search Bar */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           <input
             className="input"
             placeholder="Search engineering documents (e.g., cache eviction, latency regression, PR #834)..."
@@ -71,19 +85,45 @@ export default function SearchPage() {
           </button>
         </div>
 
+        {/* Quick Example Queries Carousel */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", flexShrink: 0 }}>Examples:</span>
+          <div className="carousel-container" style={{ flex: 1 }}>
+            {EXAMPLE_SEARCHES.map((ex, idx) => (
+              <button
+                key={idx}
+                className="tag"
+                style={{
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                  fontSize: "0.75rem",
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                }}
+                onClick={() => {
+                  setQuery(ex);
+                  handleSearch(ex);
+                }}
+              >
+                🔎 {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Filters Bar */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: "0.78rem", color: "var(--text-tertiary)" }}>Filters:</span>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}>
+          <span style={{ fontSize: "0.78rem", color: "var(--text-tertiary)", fontWeight: 500 }}>Filters:</span>
           <input
             className="input"
-            style={{ width: 140, padding: "6px 10px", fontSize: "0.8rem" }}
+            style={{ width: 130, padding: "5px 8px", fontSize: "0.78rem" }}
             placeholder="Release tag..."
             value={release}
             onChange={(e) => setRelease(e.target.value)}
           />
           <input
             className="input"
-            style={{ width: 140, padding: "6px 10px", fontSize: "0.8rem" }}
+            style={{ width: 130, padding: "5px 8px", fontSize: "0.78rem" }}
             placeholder="Author username..."
             value={author}
             onChange={(e) => setAuthor(e.target.value)}
@@ -92,6 +132,7 @@ export default function SearchPage() {
             className="filter-select"
             value={changeType}
             onChange={(e) => setChangeType(e.target.value)}
+            style={{ fontSize: "0.78rem", padding: "5px 8px" }}
           >
             <option value="">All Change Types</option>
             <option value="bugfix">Bugfix</option>
@@ -100,16 +141,36 @@ export default function SearchPage() {
             <option value="refactor">Refactor</option>
             <option value="security">Security</option>
           </select>
-          {(release || author || changeType) && (
+
+          {/* Interactive Minimum Match Slider */}
+          <div className="range-slider-wrap" style={{ marginLeft: "auto" }} title="Filter minimum semantic match relevance">
+            <span style={{ fontSize: "0.75rem", color: "var(--text-tertiary)" }}>Min Match:</span>
+            <input
+              type="range"
+              min={0}
+              max={80}
+              step={5}
+              className="range-slider"
+              value={minScore}
+              onChange={(e) => setMinScore(Number(e.target.value))}
+            />
+            <span className="badge badge-neutral font-mono" style={{ fontSize: "0.72rem", minWidth: 42, textAlign: "center" }}>
+              {minScore}%
+            </span>
+          </div>
+
+          {(release || author || changeType || minScore > 0) && (
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 setRelease("");
                 setAuthor("");
                 setChangeType("");
+                setMinScore(0);
               }}
+              style={{ fontSize: "0.75rem", padding: "3px 8px" }}
             >
-              Clear
+              Clear Filters
             </button>
           )}
         </div>
@@ -121,19 +182,20 @@ export default function SearchPage() {
           <div className="loading-spinner" />
           <p style={{ marginTop: 8 }}>Searching engineering documents...</p>
         </div>
-      ) : searched && results.length === 0 ? (
+      ) : searched && filteredResults.length === 0 ? (
         <div className="empty-state">
-          No matching engineering documents found. Try modifying your search query or filters.
+          No matching engineering documents found for current query and filters.
         </div>
       ) : (
         <div>
-          {results.length > 0 && (
-            <div style={{ fontSize: "0.82rem", color: "var(--text-tertiary)", marginBottom: 10 }}>
-              Found {results.length} relevant documents:
+          {filteredResults.length > 0 && (
+            <div style={{ fontSize: "0.82rem", color: "var(--text-tertiary)", marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+              <span>Found {filteredResults.length} relevant documents:</span>
+              {minScore > 0 && <span style={{ color: "var(--accent-primary)" }}>Filtered ≥ {minScore}% match</span>}
             </div>
           )}
 
-          {results.map((r) => (
+          {filteredResults.map((r) => (
             <div
               key={r.document_id}
               className="result-card"

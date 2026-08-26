@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncProvider } from "@/context/SyncContext";
+import { SidebarProvider } from "@/context/SidebarContext";
 import { SyncLiveModal } from "@/components/SyncLiveModal";
 
 export const metadata: Metadata = {
@@ -18,13 +19,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SyncProvider>
-          <div className="app-layout">
-            <Sidebar />
-            <main className="main-content">{children}</main>
-          </div>
-          <SyncLiveModal />
-        </SyncProvider>
+        <SidebarProvider>
+          <SyncProvider>
+            <div className="app-layout">
+              <Sidebar />
+              <main className="main-content">{children}</main>
+            </div>
+            <SyncLiveModal />
+          </SyncProvider>
+        </SidebarProvider>
       </body>
     </html>
   );

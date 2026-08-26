@@ -84,6 +84,16 @@ export function PRDetailModal({ prId, onClose }: PRDetailModalProps) {
       .finally(() => setLoading(false));
   }, [prId]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   if (!prId) return null;
 
   const toggleFile = (filename: string) => {
