@@ -39,6 +39,34 @@ export interface Repository {
   created_at: string;
 }
 
+export interface ChangedFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch?: string | null;
+}
+
+export interface CommitInfo {
+  sha: string;
+  message: string;
+  author_name: string;
+  committed_at: string | null;
+}
+
+export interface CommitDiffResponse {
+  sha: string;
+  message: string;
+  author: string;
+  date: string | null;
+  stats?: {
+    total: number;
+    additions: number;
+    deletions: number;
+  };
+  files: ChangedFile[];
+}
+
 export interface PullRequest {
   id: number;
   pr_number: number;
@@ -57,8 +85,8 @@ export interface PullRequest {
   html_url: string | null;
   has_knowledge: boolean;
   knowledge?: any;
-  commits?: any[];
-  changed_files?: any[];
+  commits?: CommitInfo[];
+  changed_files?: ChangedFile[];
   reviews?: any[];
 }
 
@@ -159,6 +187,9 @@ export const api = {
     ),
 
   getPullRequest: (id: number) => request<PullRequest>(`/api/pull-requests/${id}`),
+
+  getCommitDiff: (prId: number, sha: string) =>
+    request<CommitDiffResponse>(`/api/pull-requests/${prId}/commits/${sha}/diff`),
 
   // Search
   search: (params: {

@@ -135,6 +135,7 @@ async def get_pull_request(
                 "status": f.status,
                 "additions": f.additions,
                 "deletions": f.deletions,
+                "patch": f.patch,
             }
             for f in pr.changed_files
         ],
@@ -148,4 +149,61 @@ async def get_pull_request(
             for r in pr.reviews
         ],
         "knowledge": knowledge_data,
+    }
+
+
+@router.get("/{pr_id}/commits/{sha}/diff")
+async def get_commit_diff(
+    pr_id: int,
+    sha: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> Any:
+    """
+    Fetch on-demand live diff for a specific commit directly from GitHub without storing in DB.
+    """
+    from app.collectors.github_collector import GitHubCollector
+    from app.db.models import Repository
+
+    result = await session.execute(
+        select(PullRequest)
+        .where(PullRequest.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+    if not pr:
+        raise HTTPException(status_code=404, detail="Pull request not found")
+
+    repo_result = await session.execute(
+        select(Repository).where(Repository.id == pr.repository_id)
+    )
+    repo = repo_result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    try:
+        async with GitHubCollector() as collector:
+            commit_data = await collector.get_commit(repo.owner, repo.name, sha)
+    except Exception as e:
+        logger.error("Failed to fetch commit %s from GitHub: %s", sha, e)
+        raise HTTPException(status_code=502, detail=f"Failed to fetch commit from GitHub: {str(e)}")
+
+    if not commit_data:
+        raise HTTPException(status_code=404, detail=f"Commit {sha} not found on GitHub")
+
+    files = []
+    for f in commit_data.get("files", []):
+        files.append({
+            "filename": f.get("filename"),
+            "status": f.get("status"),
+            "additions": f.get("additions", 0),
+            "deletions": f.get("deletions", 0),
+            "patch": f.get("patch", ""),
+        })
+
+    return {
+        "sha": commit_data.get("sha"),
+        "message": commit_data.get("commit", {}).get("message", ""),
+        "author": commit_data.get("commit", {}).get("author", {}).get("name", ""),
+        "date": commit_data.get("commit", {}).get("author", {}).get("date"),
+        "stats": commit_data.get("stats", {}),
+        "files": files,
     }

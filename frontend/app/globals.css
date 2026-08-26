@@ -1310,3 +1310,82 @@ a:hover {
     opacity: 0.15;
   }
 }
+
+/* ── Unified Code Diff Viewer ────────────────────────────────────────────── */
+
+.diff-container {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.diff-filename {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.diff-body {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-x: auto;
+  max-height: 480px;
+  padding: 4px 0;
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+.diff-line {
+  display: flex;
+  padding: 1px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diff-line-num {
+  width: 36px;
+  flex-shrink: 0;
+  color: #484f58;
+  font-size: 0.72rem;
+  user-select: none;
+  text-align: right;
+  padding-right: 12px;
+}
+
+.diff-line-text {
+  flex: 1;
+}
+
+.diff-line--chunk-header {
+  background: rgba(56, 139, 253, 0.15);
+  color: #79c0ff;
+  font-weight: 500;
+  border-left: 3px solid #388bfd;
+}
+
+.diff-line--addition {
+  background: rgba(46, 160, 67, 0.18);
+  color: #7ee787;
+  border-left: 3px solid #3fb950;
+}
+
+.diff-line--deletion {
+  background: rgba(248, 81, 73, 0.18);
+  color: #ff7b72;
+  border-left: 3px solid #f85149;
+}
+
+.diff-line--context {
+  color: #8b949e;
+}

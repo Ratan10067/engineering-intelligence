@@ -127,8 +127,8 @@ class GitHubCollector:
 
         await self._check_rate_limit(response)
 
-        if response.status_code == 404:
-            return response  # Handle 404 at call site
+        if response.status_code in (404, 422):
+            return response  # Handle 404/422 at call site
 
         response.raise_for_status()
         return response
@@ -136,7 +136,7 @@ class GitHubCollector:
     async def _get_json(self, url: str, **kwargs: Any) -> Any:
         """GET request returning parsed JSON."""
         response = await self._request("GET", url, **kwargs)
-        if response.status_code == 404:
+        if response.status_code in (404, 422):
             return None
         return response.json()
 
@@ -307,6 +307,12 @@ class GitHubCollector:
     ) -> dict[str, Any] | None:
         """Fetch details for a single PR."""
         return await self._get_json(f"/repos/{owner}/{repo}/pulls/{pr_number}")
+
+    async def get_commit(
+        self, owner: str, repo: str, sha: str
+    ) -> dict[str, Any] | None:
+        """Fetch on-demand details and diff patches for a specific commit."""
+        return await self._get_json(f"/repos/{owner}/{repo}/commits/{sha}")
 
     # ── PR Sub-resources ────────────────────────────────────────────────
 
