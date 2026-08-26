@@ -190,6 +190,7 @@ class GitHubCollector:
         *,
         max_prs: int = 50,
         since: datetime | None = None,
+        exclude_pr_numbers: set[int] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Fetch merged pull requests, newest first.
