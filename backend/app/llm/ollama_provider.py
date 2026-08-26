@@ -78,6 +78,9 @@ class OllamaProvider(LLMProvider):
             },
         }
 
+        if "format" in kwargs:
+            payload["format"] = kwargs["format"]
+
         if system_prompt:
             payload["system"] = system_prompt
 

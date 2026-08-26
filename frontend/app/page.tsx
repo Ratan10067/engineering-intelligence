@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, type Repository, type Stats, type PullRequest } from "@/lib/api";
 import { Header } from "@/components/Header";
 import { PRDetailModal } from "@/components/PRDetailModal";
+import { SyncLiveModal } from "@/components/SyncLiveModal";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -13,9 +14,9 @@ export default function DashboardPage() {
   const [selectedRepoId, setSelectedRepoId] = useState<number | undefined>();
   const [newRepo, setNewRepo] = useState("");
   const [loading, setLoading] = useState(true);
-  const [syncingRepoId, setSyncingRepoId] = useState<number | null>(null);
-  const [syncMax, setSyncMax] = useState(50);
+  const [syncMax, setSyncMax] = useState(10);
   const [activePRId, setActivePRId] = useState<number | null>(null);
+  const [syncLiveRepo, setSyncLiveRepo] = useState<Repository | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -52,17 +53,13 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleSync(repoId: number) {
-    setSyncingRepoId(repoId);
-    try {
-      const res = await api.syncRepository(repoId, syncMax);
-      alert(res.message);
-      loadDashboardData();
-    } catch (e: any) {
-      alert(`Sync error: ${e.message}`);
-    } finally {
-      setSyncingRepoId(null);
-    }
+  function handleSync(repo: Repository) {
+    setSyncLiveRepo(repo);
+  }
+
+  function handleSyncLiveClose() {
+    setSyncLiveRepo(null);
+    loadDashboardData();
   }
 
   async function handleCancelSync(repoId: number) {
@@ -112,16 +109,29 @@ export default function DashboardPage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>Sync limit:</span>
-            <select
-              className="filter-select"
+            <input
+              type="number"
+              className="input"
+              style={{ width: 72, textAlign: "center", padding: "4px 8px", fontSize: "0.82rem" }}
+              min={1}
+              max={500}
               value={syncMax}
-              onChange={(e) => setSyncMax(Number(e.target.value))}
-            >
-              <option value={10}>10 PRs</option>
-              <option value={50}>50 PRs</option>
-              <option value={100}>100 PRs</option>
-              <option value={500}>500 PRs</option>
-            </select>
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val > 0) setSyncMax(val);
+              }}
+            />
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>PRs</span>
+            {[10, 20, 50, 100].map((n) => (
+              <button
+                key={n}
+                className={`btn btn-sm ${syncMax === n ? "btn-primary" : "btn-secondary"}`}
+                style={{ padding: "2px 8px", fontSize: "0.72rem", minWidth: 0 }}
+                onClick={() => setSyncMax(n)}
+              >
+                {n}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -159,7 +169,7 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {repos.map((r) => {
-                  const isSyncing = ["collecting", "understanding", "embedding"].includes(r.sync_status) || syncingRepoId === r.id;
+                  const isSyncing = ["collecting", "understanding", "embedding"].includes(r.sync_status);
                   return (
                     <tr key={r.id}>
                       <td style={{ fontWeight: 600 }}>{r.full_name}</td>
@@ -185,11 +195,10 @@ export default function DashboardPage() {
                       <td style={{ textAlign: "right" }}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                           <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleSync(r.id)}
-                            disabled={isSyncing}
+                            className={`btn btn-sm ${isSyncing ? "btn-primary" : "btn-secondary"}`}
+                            onClick={() => handleSync(r)}
                           >
-                            {isSyncing ? "Syncing..." : "Sync Now"}
+                            {isSyncing ? "📊 View Live" : "Sync Now"}
                           </button>
                           {isSyncing && (
                             <button
@@ -275,6 +284,16 @@ export default function DashboardPage() {
 
       {/* PR Detail Modal */}
       <PRDetailModal prId={activePRId} onClose={() => setActivePRId(null)} />
+
+      {/* Live Sync Modal */}
+      {syncLiveRepo && (
+        <SyncLiveModal
+          repoId={syncLiveRepo.id}
+          repoName={syncLiveRepo.full_name}
+          maxPrs={syncMax}
+          onClose={handleSyncLiveClose}
+        />
+      )}
     </div>
   );
 }

@@ -148,6 +148,10 @@ export const api = {
       method: 'POST',
     }),
 
+  // Live Sync SSE URL
+  syncLiveUrl: (id: number, maxPrs: number = 10) =>
+    `${API_BASE}/api/repositories/${id}/sync/live?max_prs=${maxPrs}`,
+
   // Pull Requests
   getPullRequests: (repoId: number, limit = 20, offset = 0) =>
     request<{ items: PullRequest[]; total: number }>(

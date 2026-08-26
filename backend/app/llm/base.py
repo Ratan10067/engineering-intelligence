@@ -26,21 +26,55 @@ class LLMResponse:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any] | None:
-        """Attempt to parse the content as JSON."""
-        try:
-            return json.loads(self.content)
-        except (json.JSONDecodeError, TypeError):
-            # Try to extract JSON from markdown code blocks
-            content = self.content.strip()
-            if "```json" in content:
-                start = content.index("```json") + 7
-                end = content.index("```", start)
-                return json.loads(content[start:end].strip())
-            elif "```" in content:
-                start = content.index("```") + 3
-                end = content.index("```", start)
-                return json.loads(content[start:end].strip())
+        """Attempt to parse the content as JSON with robust cleaning for local models."""
+        if not self.content:
             return None
+
+        # Clean sentencepiece/gemma space tokens and zero-width spaces
+        cleaned = (
+            self.content.replace("\u2581", " ")
+            .replace("\u00a0", " ")
+            .replace("\ufeff", "")
+            .replace("\u200b", "")
+            .strip()
+        )
+
+        # 1. Direct JSON parse
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # 2. Extract from markdown code blocks ```json ... ```
+        if "```" in cleaned:
+            parts = cleaned.split("```")
+            for part in parts:
+                p = part.strip()
+                if p.lower().startswith("json"):
+                    p = p[4:].strip()
+                if p.startswith("{") and p.endswith("}"):
+                    try:
+                        parsed = json.loads(p)
+                        if isinstance(parsed, dict):
+                            return parsed
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+        # 3. Find first '{' and last '}'
+        first_brace = cleaned.find("{")
+        last_brace = cleaned.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            candidate = cleaned[first_brace : last_brace + 1].strip()
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        return None
 
 
 class LLMProvider(ABC):
@@ -81,10 +115,15 @@ class LLMProvider(ABC):
 
         Returns parsed JSON dict or None if parsing fails.
         """
+        json_instruction = "You MUST respond with valid JSON only. Output a single JSON object matching the requested schema. No explanations, no markdown code blocks, just raw JSON."
         if system_prompt:
-            system_prompt += "\n\nYou MUST respond with valid JSON only. No explanations, no markdown, just JSON."
+            system_prompt += f"\n\n{json_instruction}"
         else:
-            system_prompt = "You MUST respond with valid JSON only. No explanations, no markdown, just JSON."
+            system_prompt = json_instruction
+
+        # Pass format="json" if not explicitly overridden
+        if "format" not in kwargs:
+            kwargs["format"] = "json"
 
         response = await self.generate(
             prompt,
@@ -93,7 +132,6 @@ class LLMProvider(ABC):
             max_tokens=max_tokens,
             **kwargs,
         )
-        print("LLM raw response:  ", response.content)
         return response.to_json()
     @abstractmethod
     async def health_check(self) -> bool:

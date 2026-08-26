@@ -20,6 +20,7 @@ from app.api.routes import (
     repositories,
     search,
     sync,
+    sync_live,
     webhooks,
 )
 from app.config import get_settings
@@ -33,6 +34,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("engineering_intelligence.main")
+
+# Silence SQLAlchemy engine echo logs (they spam every 8s from dashboard polling)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
 # ── Lifespan ────────────────────────────────────────────────────────────────
@@ -90,6 +94,7 @@ app.add_middleware(
 
 app.include_router(repositories.router)
 app.include_router(sync.router)
+app.include_router(sync_live.router)
 app.include_router(pull_requests.router)
 app.include_router(search.router)
 app.include_router(questions.router)

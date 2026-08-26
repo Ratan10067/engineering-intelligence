@@ -246,6 +246,42 @@ Produce a JSON response with this exact structure:
             logger.error("LLM returned no structured data for PR #%d", pr.github_pr_number)
             return None
 
+        # Normalize keys for resilience with 2B/local models (e.g. "summaary", "impaact")
+        normalized: dict[str, Any] = {}
+        for k, v in knowledge_data.items():
+            clean_k = str(k).lower().strip().replace("-", "_")
+            if clean_k.startswith("summa") or "summary" in clean_k:
+                normalized["summary"] = v
+            elif clean_k.startswith("motivat") or "motivation" in clean_k:
+                normalized["motivation"] = v
+            elif clean_k.startswith("comp") or "component" in clean_k:
+                normalized["components"] = v if isinstance(v, list) else [str(v)]
+            elif clean_k.startswith("change") or "type" in clean_k:
+                normalized["change_types"] = v if isinstance(v, list) else [str(v)]
+            elif clean_k.startswith("imp") or "impact" in clean_k:
+                normalized["impact"] = v if isinstance(v, list) else [str(v)]
+            elif clean_k.startswith("arch") or "architectur" in clean_k:
+                normalized["architectural_change"] = bool(v)
+            elif clean_k.startswith("decis") or "decision" in clean_k:
+                normalized["key_decisions"] = v if isinstance(v, list) else []
+            elif clean_k.startswith("review") or "highlight" in clean_k:
+                normalized["review_highlights"] = v if isinstance(v, list) else []
+            elif clean_k.startswith("evid") or "classif" in clean_k:
+                normalized["evidence_classification"] = v if isinstance(v, dict) else {}
+            else:
+                normalized[clean_k] = v
+
+        if "summary" not in normalized and "motivation" in normalized:
+            normalized["summary"] = normalized["motivation"]
+        if "summary" not in normalized:
+            normalized["summary"] = f"Updates for PR #{pr.github_pr_number}: {pr.title}"
+        if "components" not in normalized:
+            normalized["components"] = []
+        if "change_types" not in normalized:
+            normalized["change_types"] = []
+
+        knowledge_data = normalized
+
         # Store in database
         await db_repo.upsert_pr_knowledge(
             session,
