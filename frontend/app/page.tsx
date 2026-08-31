@@ -121,18 +121,25 @@ export default function DashboardPage() {
                 <input
                   type="range"
                   min={5}
-                  max={100}
+                  max={1000000}
                   step={5}
                   className="range-slider"
-                  value={Math.min(syncMax, 100)}
+                  value={syncMax}
                   onChange={(e) => setSyncMax(Number(e.target.value))}
                   title={`Adjust PR sync limit: ${syncMax}`}
                 />
-                <span className="badge badge-neutral font-mono" style={{ fontWeight: 600, minWidth: 62, textAlign: "center" }}>
-                  {syncMax} PRs
-                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000000}
+                  className="input font-mono"
+                  style={{ width: 90, padding: "2px 6px", fontSize: "0.78rem", textAlign: "center" }}
+                  value={syncMax}
+                  onChange={(e) => setSyncMax(Math.max(1, Number(e.target.value) || 1))}
+                  title="Enter arbitrary PR sync limit (up to 1,000,000)"
+                />
               </div>
-              {[10, 25, 50, 100].map((n) => (
+              {[10, 50, 100, 500, 1000].map((n) => (
                 <button
                   key={n}
                   className={`btn btn-sm ${syncMax === n ? "btn-primary" : "btn-secondary"}`}
