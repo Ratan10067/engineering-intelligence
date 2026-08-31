@@ -380,12 +380,6 @@ async def sync_repository_live(
         if not repo:
             raise HTTPException(status_code=404, detail="Repository not found")
 
-        if repo.sync_status in (SyncStatus.COLLECTING, SyncStatus.UNDERSTANDING, SyncStatus.EMBEDDING):
-            raise HTTPException(
-                status_code=409,
-                detail=f"Sync already in progress (status: {repo.sync_status.value})"
-            )
-
         owner = repo.owner
         name = repo.name
 
