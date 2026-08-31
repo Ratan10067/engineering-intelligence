@@ -8,14 +8,15 @@ Uses PostgreSQL ON CONFLICT for safe re-ingestion.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    AnalysisStatus,
     ChangedFile,
     Commit,
     DiscussionComment,
@@ -241,6 +242,117 @@ async def get_prs_without_knowledge(
         .order_by(PullRequest.github_pr_number)
     )
     return list(result.scalars().all())
+
+
+async def get_unlocked_prs_without_knowledge(
+    session: AsyncSession,
+    repo_id: int,
+    stale_timeout_minutes: int = 15,
+) -> list[PullRequest]:
+    """
+    Get PRs without knowledge that are not locked by an active worker.
+    Reclaims PRs whose lock has exceeded stale_timeout_minutes.
+    """
+    stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=stale_timeout_minutes)
+    result = await session.execute(
+        select(PullRequest)
+        .outerjoin(PRKnowledge)
+        .where(
+            PullRequest.repository_id == repo_id,
+            PRKnowledge.id == None,
+            PullRequest.analysis_status != AnalysisStatus.COMPLETED,
+            or_(
+                PullRequest.is_locked == False,
+                PullRequest.locked_at == None,
+                PullRequest.locked_at < stale_threshold,
+            ),
+        )
+        .order_by(PullRequest.github_pr_number)
+    )
+    return list(result.scalars().all())
+
+
+async def acquire_pr_lock(
+    session: AsyncSession,
+    pr_id: int,
+    worker_id: str,
+    stale_timeout_minutes: int = 15,
+) -> bool:
+    """
+    Atomically acquire an analysis lock on a pull request.
+
+    Returns True if the lock was acquired by this worker, or False if another
+    worker holds an active (non-stale) lock on the PR.
+    """
+    now_utc = datetime.now(timezone.utc)
+    stale_threshold = now_utc - timedelta(minutes=stale_timeout_minutes)
+
+    stmt = (
+        update(PullRequest)
+        .where(
+            PullRequest.id == pr_id,
+            or_(
+                PullRequest.is_locked == False,
+                PullRequest.locked_at == None,
+                PullRequest.locked_at < stale_threshold,
+                PullRequest.locked_by == worker_id,
+            ),
+        )
+        .values(
+            is_locked=True,
+            locked_at=now_utc,
+            locked_by=worker_id,
+            analysis_status=AnalysisStatus.PROCESSING,
+            updated_at=now_utc,
+        )
+        .returning(PullRequest.id)
+    )
+    result = await session.execute(stmt)
+    locked_id = result.scalar_one_or_none()
+    if locked_id is not None:
+        await session.commit()
+        logger.info(
+            "🔒 [LOCK ACQUIRED] Worker '%s' acquired lock for PR id %d",
+            worker_id,
+            pr_id,
+        )
+        return True
+
+    logger.info(
+        "⏳ [LOCK SKIPPED] Worker '%s' skipped PR id %d (currently locked by another worker)",
+        worker_id,
+        pr_id,
+    )
+    return False
+
+
+async def release_pr_lock(
+    session: AsyncSession,
+    pr_id: int,
+    status: AnalysisStatus = AnalysisStatus.COMPLETED,
+) -> None:
+    """
+    Release the lock on a pull request and update its analysis status.
+    """
+    now_utc = datetime.now(timezone.utc)
+    stmt = (
+        update(PullRequest)
+        .where(PullRequest.id == pr_id)
+        .values(
+            is_locked=False,
+            locked_at=None,
+            locked_by=None,
+            analysis_status=status,
+            updated_at=now_utc,
+        )
+    )
+    await session.execute(stmt)
+    await session.commit()
+    logger.info(
+        "🔓 [LOCK RELEASED] Released lock on PR id %d with status '%s'",
+        pr_id,
+        status.value if hasattr(status, "value") else status,
+    )
 
 
 async def get_existing_pr_numbers(

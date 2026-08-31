@@ -8,6 +8,7 @@ Distinguishes between DOCUMENTED, INFERRED, and UNKNOWN evidence.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -17,7 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.config import get_settings
 from app.db.models import (
+    AnalysisStatus,
     ChangedFile,
     Commit,
     DiscussionComment,
@@ -196,144 +199,177 @@ Produce a JSON response with this exact structure:
         self,
         session: AsyncSession,
         pr_id: int,
+        worker_id: str | None = None,
+        stale_timeout_minutes: int | None = None,
     ) -> dict[str, Any] | None:
         """
         Analyze a single PR and store structured knowledge.
+        Atomically acquires a distributed database lock prior to LLM analysis.
 
-        Returns the generated knowledge dict or None on failure.
+        Returns the generated knowledge dict or None on failure or if locked by another node.
         """
-        # Load PR with all related data
-        result = await session.execute(
-            select(PullRequest)
-            .options(
-                selectinload(PullRequest.commits),
-                selectinload(PullRequest.changed_files),
-                selectinload(PullRequest.reviews),
-                selectinload(PullRequest.review_comments),
-                selectinload(PullRequest.discussion_comments),
-            )
-            .where(PullRequest.id == pr_id)
+        settings = get_settings()
+        active_worker_id = worker_id or settings.worker_id
+        timeout_mins = (
+            stale_timeout_minutes
+            if stale_timeout_minutes is not None
+            else settings.pr_lock_timeout_minutes
         )
-        pr = result.scalar_one_or_none()
 
-        if not pr:
-            logger.error("PR %d not found", pr_id)
+        # 1. Attempt to acquire distributed lock
+        lock_acquired = await db_repo.acquire_pr_lock(
+            session,
+            pr_id,
+            worker_id=active_worker_id,
+            stale_timeout_minutes=timeout_mins,
+        )
+        if not lock_acquired:
+            logger.info(
+                "PR %d is currently locked by another worker node, skipping.", pr_id
+            )
             return None
 
-        # Build context and prompt
-        context = self._build_pr_context(
-            pr, pr.commits, pr.changed_files,
-            pr.reviews, pr.review_comments, pr.discussion_comments,
-        )
-        system_prompt, user_prompt = self._build_understanding_prompt(context)
-
-        # Call LLM with automatic multi-attempt retry
-        knowledge_data = None
-        start_time = time.monotonic()
-        max_attempts = 3
-
-        import asyncio
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                temp = 0.1 if attempt == 1 else 0.2
-                knowledge_data = await self.llm.generate_structured(
-                    user_prompt,
-                    system_prompt=system_prompt,
-                    temperature=temp,
-                    max_tokens=4096,
+        try:
+            # Load PR with all related data
+            result = await session.execute(
+                select(PullRequest)
+                .options(
+                    selectinload(PullRequest.commits),
+                    selectinload(PullRequest.changed_files),
+                    selectinload(PullRequest.reviews),
+                    selectinload(PullRequest.review_comments),
+                    selectinload(PullRequest.discussion_comments),
                 )
-                if knowledge_data and isinstance(knowledge_data, dict) and len(knowledge_data) > 0:
-                    break
-                logger.warning(
-                    "LLM returned no structured data for PR #%d (attempt %d/%d), retrying...",
-                    pr.github_pr_number, attempt, max_attempts,
-                )
-            except Exception as e:
-                logger.warning(
-                    "LLM call failed for PR #%d (attempt %d/%d): %s",
-                    pr.github_pr_number, attempt, max_attempts, e,
-                )
-            if attempt < max_attempts:
-                await asyncio.sleep(1.0)
-
-        elapsed_ms = int((time.monotonic() - start_time) * 1000)
-
-        if not knowledge_data:
-            logger.warning(
-                "LLM generation failed after %d attempts for PR #%d. Generating structured fallback knowledge.",
-                max_attempts, pr.github_pr_number,
+                .where(PullRequest.id == pr_id)
             )
-            # Create a clean fallback knowledge structure from PR metadata
-            component_guesses = list({f.filename.split("/")[0] for f in pr.changed_files if "/" in f.filename} or ["core"])
-            knowledge_data = {
-                "summary": f"{pr.title}",
-                "motivation": pr.description[:300] if pr.description else f"Pull request #{pr.github_pr_number} merged by {pr.author}.",
-                "components": component_guesses[:5],
-                "change_types": pr.labels if pr.labels else ["enhancement"],
-                "impact": ["codebase updates"],
-                "architectural_change": False,
-                "key_decisions": [],
-                "review_highlights": [],
-                "evidence_classification": {
-                    "summary": "DOCUMENTED",
-                    "motivation": "DOCUMENTED" if pr.description else "UNKNOWN",
-                    "impact": "INFERRED",
-                },
-            }
+            pr = result.scalar_one_or_none()
 
-        # Normalize keys for resilience with 2B/local models (e.g. "summaary", "impaact")
-        normalized: dict[str, Any] = {}
-        for k, v in knowledge_data.items():
-            clean_k = str(k).lower().strip().replace("-", "_")
-            if clean_k.startswith("summa") or "summary" in clean_k:
-                normalized["summary"] = v
-            elif clean_k.startswith("motivat") or "motivation" in clean_k:
-                normalized["motivation"] = v
-            elif clean_k.startswith("comp") or "component" in clean_k:
-                normalized["components"] = v if isinstance(v, list) else [str(v)]
-            elif clean_k.startswith("change") or "type" in clean_k:
-                normalized["change_types"] = v if isinstance(v, list) else [str(v)]
-            elif clean_k.startswith("imp") or "impact" in clean_k:
-                normalized["impact"] = v if isinstance(v, list) else [str(v)]
-            elif clean_k.startswith("arch") or "architectur" in clean_k:
-                normalized["architectural_change"] = bool(v)
-            elif clean_k.startswith("decis") or "decision" in clean_k:
-                normalized["key_decisions"] = v if isinstance(v, list) else []
-            elif clean_k.startswith("review") or "highlight" in clean_k:
-                normalized["review_highlights"] = v if isinstance(v, list) else []
-            elif clean_k.startswith("evid") or "classif" in clean_k:
-                normalized["evidence_classification"] = v if isinstance(v, dict) else {}
-            else:
-                normalized[clean_k] = v
+            if not pr:
+                logger.error("PR %d not found", pr_id)
+                await db_repo.release_pr_lock(session, pr_id, AnalysisStatus.FAILED)
+                return None
 
-        if "summary" not in normalized and "motivation" in normalized:
-            normalized["summary"] = normalized["motivation"]
-        if "summary" not in normalized:
-            normalized["summary"] = f"Updates for PR #{pr.github_pr_number}: {pr.title}"
-        if "components" not in normalized:
-            normalized["components"] = []
-        if "change_types" not in normalized:
-            normalized["change_types"] = []
+            # Build context and prompt
+            context = self._build_pr_context(
+                pr, pr.commits, pr.changed_files,
+                pr.reviews, pr.review_comments, pr.discussion_comments,
+            )
+            system_prompt, user_prompt = self._build_understanding_prompt(context)
 
-        knowledge_data = normalized
+            # Call LLM with automatic multi-attempt retry
+            knowledge_data = None
+            start_time = time.monotonic()
+            max_attempts = 3
 
-        # Store in database
-        await db_repo.upsert_pr_knowledge(
-            session,
-            pull_request_id=pr_id,
-            knowledge_data=knowledge_data,
-            llm_model=self.llm.model if hasattr(self.llm, 'model') else None,
-            processing_time_ms=elapsed_ms,
-        )
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    temp = 0.1 if attempt == 1 else 0.2
+                    knowledge_data = await self.llm.generate_structured(
+                        user_prompt,
+                        system_prompt=system_prompt,
+                        temperature=temp,
+                        max_tokens=4096,
+                    )
+                    if knowledge_data and isinstance(knowledge_data, dict) and len(knowledge_data) > 0:
+                        break
+                    logger.warning(
+                        "LLM returned no structured data for PR #%d (attempt %d/%d), retrying...",
+                        pr.github_pr_number, attempt, max_attempts,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "LLM call failed for PR #%d (attempt %d/%d): %s",
+                        pr.github_pr_number, attempt, max_attempts, e,
+                    )
+                if attempt < max_attempts:
+                    await asyncio.sleep(1.0)
 
-        logger.info(
-            "🧠 [LLM PR UNDERSTANDING JSON] (PR #%d generated in %dms):\n%s",
-            pr.github_pr_number,
-            elapsed_ms,
-            json.dumps(knowledge_data, indent=2),
-        )
-        return knowledge_data
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+
+            if not knowledge_data:
+                logger.warning(
+                    "LLM generation failed after %d attempts for PR #%d. Generating structured fallback knowledge.",
+                    max_attempts, pr.github_pr_number,
+                )
+                # Create a clean fallback knowledge structure from PR metadata
+                component_guesses = list({f.filename.split("/")[0] for f in pr.changed_files if "/" in f.filename} or ["core"])
+                knowledge_data = {
+                    "summary": f"{pr.title}",
+                    "motivation": pr.description[:300] if pr.description else f"Pull request #{pr.github_pr_number} merged by {pr.author}.",
+                    "components": component_guesses[:5],
+                    "change_types": pr.labels if pr.labels else ["enhancement"],
+                    "impact": ["codebase updates"],
+                    "architectural_change": False,
+                    "key_decisions": [],
+                    "review_highlights": [],
+                    "evidence_classification": {
+                        "summary": "DOCUMENTED",
+                        "motivation": "DOCUMENTED" if pr.description else "UNKNOWN",
+                        "impact": "INFERRED",
+                    },
+                }
+
+            # Normalize keys for resilience with 2B/local models (e.g. "summaary", "impaact")
+            normalized: dict[str, Any] = {}
+            for k, v in knowledge_data.items():
+                clean_k = str(k).lower().strip().replace("-", "_")
+                if clean_k.startswith("summa") or "summary" in clean_k:
+                    normalized["summary"] = v
+                elif clean_k.startswith("motivat") or "motivation" in clean_k:
+                    normalized["motivation"] = v
+                elif clean_k.startswith("comp") or "component" in clean_k:
+                    normalized["components"] = v if isinstance(v, list) else [str(v)]
+                elif clean_k.startswith("change") or "type" in clean_k:
+                    normalized["change_types"] = v if isinstance(v, list) else [str(v)]
+                elif clean_k.startswith("imp") or "impact" in clean_k:
+                    normalized["impact"] = v if isinstance(v, list) else [str(v)]
+                elif clean_k.startswith("arch") or "architectur" in clean_k:
+                    normalized["architectural_change"] = bool(v)
+                elif clean_k.startswith("decis") or "decision" in clean_k:
+                    normalized["key_decisions"] = v if isinstance(v, list) else []
+                elif clean_k.startswith("review") or "highlight" in clean_k:
+                    normalized["review_highlights"] = v if isinstance(v, list) else []
+                elif clean_k.startswith("evid") or "classif" in clean_k:
+                    normalized["evidence_classification"] = v if isinstance(v, dict) else {}
+                else:
+                    normalized[clean_k] = v
+
+            if "summary" not in normalized and "motivation" in normalized:
+                normalized["summary"] = normalized["motivation"]
+            if "summary" not in normalized:
+                normalized["summary"] = f"Updates for PR #{pr.github_pr_number}: {pr.title}"
+            if "components" not in normalized:
+                normalized["components"] = []
+            if "change_types" not in normalized:
+                normalized["change_types"] = []
+
+            knowledge_data = normalized
+
+            # Store in database
+            await db_repo.upsert_pr_knowledge(
+                session,
+                pull_request_id=pr_id,
+                knowledge_data=knowledge_data,
+                llm_model=self.llm.model if hasattr(self.llm, 'model') else None,
+                processing_time_ms=elapsed_ms,
+            )
+
+            # Mark complete and release lock
+            await db_repo.release_pr_lock(session, pr_id, AnalysisStatus.COMPLETED)
+
+            logger.info(
+                "🧠 [LLM PR UNDERSTANDING JSON] (PR #%d generated in %dms):\n%s",
+                pr.github_pr_number,
+                elapsed_ms,
+                json.dumps(knowledge_data, indent=2),
+            )
+            return knowledge_data
+
+        except Exception as e:
+            logger.error("Failed to analyze PR %d: %s", pr_id, e, exc_info=True)
+            await session.rollback()
+            await db_repo.release_pr_lock(session, pr_id, AnalysisStatus.FAILED)
+            return None
 
     async def understand_all_prs(
         self,
@@ -341,24 +377,35 @@ Produce a JSON response with this exact structure:
         repo_id: int,
         *,
         progress_callback: Any = None,
+        worker_id: str | None = None,
     ) -> int:
         """
-        Analyze all unprocessed PRs for a repository.
+        Analyze all unprocessed PRs for a repository across distributed workers.
+        Skips PRs actively locked by another node.
 
         Returns the number of PRs successfully processed.
         """
-        prs = await db_repo.get_prs_without_knowledge(session, repo_id)
+        settings = get_settings()
+        timeout_mins = settings.pr_lock_timeout_minutes
+        prs = await db_repo.get_unlocked_prs_without_knowledge(
+            session, repo_id, stale_timeout_minutes=timeout_mins
+        )
 
         if not prs:
             logger.info("No unprocessed PRs found for repo %d", repo_id)
             return 0
 
-        logger.info("Processing %d PRs for understanding", len(prs))
+        logger.info("Processing %d candidate PRs for understanding", len(prs))
 
         success_count = 0
         for idx, pr in enumerate(prs):
             try:
-                result = await self.understand_pr(session, pr.id)
+                result = await self.understand_pr(
+                    session,
+                    pr.id,
+                    worker_id=worker_id,
+                    stale_timeout_minutes=timeout_mins,
+                )
                 if result:
                     success_count += 1
                     await session.commit()

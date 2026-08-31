@@ -49,6 +49,15 @@ class SyncStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class AnalysisStatus(str, enum.Enum):
+    """Status of LLM PR understanding analysis."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class EvidenceType(str, enum.Enum):
     """Classification of evidence reliability."""
 
@@ -138,6 +147,7 @@ class PullRequest(TimestampMixin, Base):
     __tablename__ = "pull_requests"
     __table_args__ = (
         UniqueConstraint("repository_id", "github_pr_number", name="uq_repo_pr_number"),
+        Index("ix_pr_repo_lock_status", "repository_id", "is_locked", "analysis_status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -168,6 +178,16 @@ class PullRequest(TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     html_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Distributed processing lock & analysis status
+    analysis_status: Mapped[AnalysisStatus] = mapped_column(
+        Enum(AnalysisStatus), default=AnalysisStatus.PENDING, nullable=False
+    )
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    locked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    locked_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Raw JSON from GitHub for future reference
     raw_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)

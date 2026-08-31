@@ -195,14 +195,31 @@ async def _run_live_sync(
             await session.commit()
 
             understanding_service = get_pr_understanding_service()
-            prs_without_knowledge = await db_repo.get_prs_without_knowledge(
-                session, repo_id
+            prs_without_knowledge = await db_repo.get_unlocked_prs_without_knowledge(
+                session, repo_id, stale_timeout_minutes=settings.pr_lock_timeout_minutes
             )
             prs_understood = 0
             total_to_understand = len(prs_without_knowledge)
 
             for idx, pr in enumerate(prs_without_knowledge):
                 try:
+                    # Attempt lock acquisition
+                    lock_acquired = await db_repo.acquire_pr_lock(
+                        session,
+                        pr.id,
+                        worker_id=settings.worker_id,
+                        stale_timeout_minutes=settings.pr_lock_timeout_minutes,
+                    )
+                    if not lock_acquired:
+                        yield _sse_event("pr_skipped", {
+                            "index": idx + 1,
+                            "total": total_to_understand,
+                            "pr_number": pr.github_pr_number,
+                            "title": pr.title,
+                            "message": f"PR #{pr.github_pr_number} is currently locked by another worker, skipping...",
+                        })
+                        continue
+
                     yield _sse_event("llm_start", {
                         "index": idx + 1,
                         "total": total_to_understand,
@@ -211,7 +228,12 @@ async def _run_live_sync(
                         "message": f"Sending PR #{pr.github_pr_number} to LLM...",
                     })
 
-                    result = await understanding_service.understand_pr(session, pr.id)
+                    result = await understanding_service.understand_pr(
+                        session,
+                        pr.id,
+                        worker_id=settings.worker_id,
+                        stale_timeout_minutes=settings.pr_lock_timeout_minutes,
+                    )
 
                     if result:
                         prs_understood += 1

@@ -7,15 +7,24 @@ Supports .env files for local development.
 
 from __future__ import annotations
 
+import os
+import socket
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 # Resolve project root (two levels up from this file)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _generate_default_worker_id() -> str:
+    hostname = socket.gethostname() if hasattr(socket, "gethostname") else "node"
+    return f"{hostname}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 
 
 class Settings(BaseSettings):
@@ -31,6 +40,10 @@ class Settings(BaseSettings):
     # ── PostgreSQL ──────────────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://pawan@localhost:5432/engineering_intelligence"
     database_url_sync: str = "postgresql://pawan@localhost:5432/engineering_intelligence"
+
+    # ── Distributed Worker & Locking ───────────────────────────────────
+    worker_id: str = Field(default_factory=_generate_default_worker_id)
+    pr_lock_timeout_minutes: int = 15
 
     # ── GitHub ──────────────────────────────────────────────────────────
     github_token: str = ""
