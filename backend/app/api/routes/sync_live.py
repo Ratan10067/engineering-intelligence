@@ -368,7 +368,7 @@ async def _run_live_sync(
 @router.get("/{repo_id}/sync/live")
 async def sync_repository_live(
     repo_id: int,
-    max_prs: int = Query(default=10, ge=1, le=500),
+    max_prs: int = Query(default=50, ge=1),
     from_date: str | None = Query(default=None),
     to_date: str | None = Query(default=None),
 ) -> StreamingResponse:

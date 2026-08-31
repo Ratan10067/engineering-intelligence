@@ -210,7 +210,8 @@ class GitHubCollector:
         exclude_set = exclude_pr_numbers or set()
         detailed_prs: list[dict[str, Any]] = []
         page = 1
-        max_pages = 30  # Search up to 30 pages (1500 PRs max) when querying date ranges
+        # Dynamically scale max_pages to support arbitrary max_prs
+        max_pages = max(100, (max_prs + 49) // 50 * 3)
 
         from_dt = (
             from_date.replace(tzinfo=timezone.utc)
